@@ -1,12 +1,20 @@
 import base64
 import mimetypes
 import os
+import atexit
+import socket
+import subprocess
+import threading
+import time
+import webbrowser
+from pathlib import Path
 
 import requests
 from flask import Flask, jsonify, render_template, request
 
 BASE_URL = "http://localhost:3000"
 DEFAULT_COUNTRY_CODE = os.getenv("DEFAULT_COUNTRY_CODE", "961")
+NODE_PROCESS = None
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
@@ -197,7 +205,114 @@ def api_send():
         return jsonify({"ok": False, "error": str(exc)}), 500
 
 
+def is_port_available(port: int, host: str = "127.0.0.1") -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+            return True
+        except OSError:
+            return False
+
+
+def find_available_port(preferred_port: int) -> int:
+    if preferred_port > 0 and is_port_available(preferred_port):
+        return preferred_port
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def start_node_server(api_port: int) -> subprocess.Popen:
+    env = os.environ.copy()
+    env["API_PORT"] = str(api_port)
+
+    project_root = Path(__file__).resolve().parent
+    try:
+        process = subprocess.Popen(
+            ["node", "index.js"],
+            cwd=project_root,
+            env=env,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            'Node.js is not available in PATH. Install Node.js or run "node index.js" manually.'
+        ) from exc
+
+    return process
+
+
+def stop_node_server() -> None:
+    global NODE_PROCESS
+    process = NODE_PROCESS
+    NODE_PROCESS = None
+
+    if not process:
+        return
+
+    if process.poll() is not None:
+        return
+
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def wait_for_node_ready(base_url: str, timeout_seconds: int = 20) -> None:
+    deadline = time.time() + timeout_seconds
+    last_error = None
+
+    while time.time() < deadline:
+        if NODE_PROCESS and NODE_PROCESS.poll() is not None:
+            raise RuntimeError("Node API process exited before becoming ready.")
+
+        try:
+            response = requests.get(f"{base_url}/auth/status", timeout=1.5)
+            if response.ok:
+                return
+        except requests.RequestException as exc:
+            last_error = exc
+
+        time.sleep(0.4)
+
+    raise RuntimeError(
+        f"Node API did not become ready on {base_url} within {timeout_seconds} seconds."
+        + (f" Last error: {last_error}" if last_error else "")
+    )
+
+
+def open_browser_soon(url: str, delay_seconds: float = 0.8) -> None:
+    timer = threading.Timer(delay_seconds, lambda: webbrowser.open(url))
+    timer.daemon = True
+    timer.start()
+
+
 if __name__ == "__main__":
-    port = int(os.getenv("FLASK_PORT", "8000"))
+    preferred_api_port = int(os.getenv("API_PORT", "3000"))
+    api_port = find_available_port(preferred_api_port)
+
+    BASE_URL = f"http://127.0.0.1:{api_port}"
+    NODE_PROCESS = start_node_server(api_port)
+    atexit.register(stop_node_server)
+    wait_for_node_ready(BASE_URL)
+
+    preferred_ui_port = int(os.getenv("FLASK_PORT", "5000"))
+    ui_port = find_available_port(preferred_ui_port)
     debug_mode = os.getenv("FLASK_DEBUG", "1") == "1"
-    app.run(host="127.0.0.1", port=port, debug=debug_mode)
+    ui_url = f"http://127.0.0.1:{ui_port}"
+
+    print(f"Node API running on: {BASE_URL}")
+    print(f"Opening UI on: {ui_url}")
+    open_browser_soon(ui_url)
+
+    try:
+        app.run(
+            host="127.0.0.1",
+            port=ui_port,
+            debug=debug_mode,
+            use_reloader=False,
+        )
+    finally:
+        stop_node_server()

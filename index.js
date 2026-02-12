@@ -271,7 +271,8 @@ app.post('/send-media', ensureClient, async (req, res) => {
   }
 });
 
-const PORT = 3000;
-app.listen(PORT, () => {
-  console.log(`HTTP API listening on http://localhost:${PORT}`);
+const HOST = process.env.API_HOST || '127.0.0.1';
+const PORT = Number(process.env.API_PORT || 3000);
+app.listen(PORT, HOST, () => {
+  console.log(`HTTP API listening on http://${HOST}:${PORT}`);
 });

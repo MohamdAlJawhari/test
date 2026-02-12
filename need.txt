@@ -4,5 +4,4 @@ npm install @wppconnect-team/wppconnect express
 pip install -r requirements.txt
 
 run: 
-node index.js
 python main.py
