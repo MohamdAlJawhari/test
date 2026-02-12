@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WhatsApp Sender</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --panel: #fffdf8;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #0f766e;
+      --accent-dark: #115e59;
+      --error-bg: #fef2f2;
+      --error-border: #fecaca;
+      --error-text: #991b1b;
+      --ok-bg: #ecfdf5;
+      --ok-border: #bbf7d0;
+      --ok-text: #14532d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, #fde68a 0, transparent 30%),
+        radial-gradient(circle at bottom left, #99f6e4 0, transparent 35%),
+        var(--bg);
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: min(720px, 100%);
+      background: var(--panel);
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 24px 24px 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.5rem;
+    }
+
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.45;
+    }
+
+    form {
+      padding: 20px 24px 24px;
+      display: grid;
+      gap: 14px;
+    }
+
+    label {
+      font-weight: 600;
+      font-size: 0.95rem;
+      display: grid;
+      gap: 8px;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      font-size: 1rem;
+      padding: 10px 12px;
+      color: var(--text);
+      background: #ffffff;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical;
+    }
+
+    input[type="file"] {
+      padding: 8px;
+    }
+
+    input:focus,
+    textarea:focus {
+      outline: 2px solid rgba(15, 118, 110, 0.25);
+      border-color: var(--accent);
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #ffffff;
+      font-size: 1rem;
+      font-weight: 700;
+      padding: 11px 16px;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+    }
+
+    .status {
+      margin: 16px 24px 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-weight: 600;
+      border: 1px solid transparent;
+    }
+
+    .status.ok {
+      background: var(--ok-bg);
+      border-color: var(--ok-border);
+      color: var(--ok-text);
+    }
+
+    .status.error {
+      background: var(--error-bg);
+      border-color: var(--error-border);
+      color: var(--error-text);
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 0.86rem;
+      line-height: 1.35;
+      margin: 0;
+    }
+
+    @media (max-width: 640px) {
+      .header,
+      form {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .status {
+        margin-left: 16px;
+        margin-right: 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <header class="header">
+      <h1>WhatsApp Sender</h1>
+      <p class="hint">
+        Enter the phone once. You can type local digits or full country code, and it will be converted to WhatsApp format automatically.
+      </p>
+      <p class="small">
+        Default country code for local numbers: +{{ default_country_code }}
+      </p>
+    </header>
+
+    {% if status_message %}
+      <div class="status {{ 'error' if status_error else 'ok' }}">
+        {{ status_message }}
+      </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+      <label>
+        Phone Number
+        <input
+          type="text"
+          name="phone"
+          value="{{ form_values.phone }}"
+          placeholder="81744432 or 96181744432"
+          required
+        >
+      </label>
+
+      <label>
+        Message
+        <textarea
+          name="message"
+          placeholder="Write text message. If you choose media, this is used as caption."
+        >{{ form_values.message }}</textarea>
+      </label>
+
+      <label>
+        Media (Optional)
+        <input type="file" name="media" accept="image/*,video/*,.pdf,.doc,.docx,.txt">
+      </label>
+
+      <button type="submit">Send</button>
+    </form>
+  </main>
+</body>
+</html>
