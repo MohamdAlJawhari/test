@@ -119,6 +119,19 @@
       background: var(--accent-dark);
     }
 
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.7;
+    }
+
+    button.secondary {
+      background: #374151;
+    }
+
+    button.secondary:hover {
+      background: #1f2937;
+    }
+
     .status {
       margin: 16px 24px 0;
       border-radius: 10px;
@@ -146,6 +159,74 @@
       margin: 0;
     }
 
+    .hidden {
+      display: none !important;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(17, 24, 39, 0.65);
+      display: grid;
+      place-items: center;
+      padding: 20px;
+      z-index: 1000;
+    }
+
+    .modal-card {
+      width: min(420px, 100%);
+      background: #ffffff;
+      border-radius: 14px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 18px 42px rgba(0, 0, 0, 0.25);
+      padding: 18px;
+      text-align: center;
+      display: grid;
+      gap: 12px;
+    }
+
+    .modal-card h2 {
+      margin: 4px 0 0;
+      font-size: 1.2rem;
+    }
+
+    .modal-message {
+      margin: 0;
+      color: var(--text);
+      line-height: 1.4;
+    }
+
+    .loader {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 4px solid #d1d5db;
+      border-top-color: var(--accent);
+      margin: 4px auto;
+      animation: spin 0.9s linear infinite;
+    }
+
+    .qr-image {
+      width: min(260px, 100%);
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      margin: 0 auto;
+      display: block;
+      background: #ffffff;
+      padding: 8px;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: center;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
     @media (max-width: 640px) {
       .header,
       form {
@@ -156,6 +237,10 @@
       .status {
         margin-left: 16px;
         margin-right: 16px;
+      }
+
+      .modal-card {
+        padding: 14px;
       }
     }
   </style>
@@ -172,19 +257,14 @@
       </p>
     </header>
 
-    {% if status_message %}
-      <div class="status {{ 'error' if status_error else 'ok' }}">
-        {{ status_message }}
-      </div>
-    {% endif %}
+    <div id="status" class="status hidden"></div>
 
-    <form method="post" enctype="multipart/form-data">
+    <form id="send-form" method="post" enctype="multipart/form-data">
       <label>
         Phone Number
         <input
           type="text"
           name="phone"
-          value="{{ form_values.phone }}"
           placeholder="81744432 or 96181744432"
           required
         >
@@ -195,7 +275,7 @@
         <textarea
           name="message"
           placeholder="Write text message. If you choose media, this is used as caption."
-        >{{ form_values.message }}</textarea>
+        ></textarea>
       </label>
 
       <label>
@@ -203,8 +283,159 @@
         <input type="file" name="media" accept="image/*,video/*,.pdf,.doc,.docx,.txt">
       </label>
 
-      <button type="submit">Send</button>
+      <button id="send-button" type="submit">Send</button>
     </form>
   </main>
+
+  <div id="qr-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="qr-title">
+    <div class="modal-card">
+      <h2 id="qr-title">WhatsApp Login</h2>
+      <p id="qr-message" class="modal-message">Preparing login...</p>
+      <div id="qr-loader" class="loader"></div>
+      <img id="qr-image" class="qr-image hidden" alt="WhatsApp QR code">
+      <div class="modal-actions">
+        <button id="close-modal" type="button" class="secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('send-form');
+    const sendButton = document.getElementById('send-button');
+    const statusBox = document.getElementById('status');
+    const modal = document.getElementById('qr-modal');
+    const qrMessage = document.getElementById('qr-message');
+    const qrLoader = document.getElementById('qr-loader');
+    const qrImage = document.getElementById('qr-image');
+    const closeModalButton = document.getElementById('close-modal');
+
+    function setBanner(ok, message) {
+      statusBox.className = `status ${ok ? 'ok' : 'error'}`;
+      statusBox.textContent = message;
+      statusBox.classList.remove('hidden');
+    }
+
+    function openModal() {
+      modal.classList.remove('hidden');
+    }
+
+    function closeModal() {
+      modal.classList.add('hidden');
+    }
+
+    function setLoadingMessage(message) {
+      qrMessage.textContent = message;
+      qrLoader.classList.remove('hidden');
+      qrImage.classList.add('hidden');
+      qrImage.removeAttribute('src');
+    }
+
+    function setQrMessage(message, qrCode) {
+      qrMessage.textContent = message;
+      qrLoader.classList.add('hidden');
+      qrImage.src = qrCode;
+      qrImage.classList.remove('hidden');
+    }
+
+    function setResultMessage(message) {
+      qrMessage.textContent = message;
+      qrLoader.classList.add('hidden');
+      qrImage.classList.add('hidden');
+      qrImage.removeAttribute('src');
+    }
+
+    async function fetchJson(url, options = {}) {
+      const response = await fetch(url, options);
+      let data;
+      try {
+        data = await response.json();
+      } catch (_err) {
+        throw new Error('Invalid response from server.');
+      }
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || `Request failed with status ${response.status}.`);
+      }
+
+      return data;
+    }
+
+    function updateModalFromStatus(data) {
+      if (data.status === 'authenticated') {
+        setLoadingMessage('Login confirmed. Sending now...');
+        return true;
+      }
+
+      if (data.status === 'qr') {
+        if (data.qrCode) {
+          setQrMessage(data.message || 'Scan this QR code with WhatsApp.', data.qrCode);
+        } else {
+          setLoadingMessage('QR code is being generated. Please wait...');
+        }
+        return false;
+      }
+
+      if (data.status === 'error') {
+        throw new Error(data.message || 'Failed to initialize WhatsApp login.');
+      }
+
+      setLoadingMessage(data.message || 'Preparing login...');
+      return false;
+    }
+
+    async function waitForAuth() {
+      const startData = await fetchJson('/api/auth/start', { method: 'POST' });
+      if (updateModalFromStatus(startData)) {
+        return;
+      }
+
+      const maxWaitMs = 180000;
+      const pollIntervalMs = 2000;
+      const startedAt = Date.now();
+
+      while (Date.now() - startedAt < maxWaitMs) {
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+        const statusData = await fetchJson('/api/auth/status');
+        if (updateModalFromStatus(statusData)) {
+          return;
+        }
+      }
+
+      throw new Error('Timed out waiting for QR login.');
+    }
+
+    async function sendFormData() {
+      const formData = new FormData(form);
+      return fetchJson('/api/send', {
+        method: 'POST',
+        body: formData,
+      });
+    }
+
+    closeModalButton.addEventListener('click', closeModal);
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      statusBox.classList.add('hidden');
+      sendButton.disabled = true;
+      openModal();
+      setLoadingMessage('Preparing login...');
+
+      try {
+        await waitForAuth();
+        const result = await sendFormData();
+        const message = result.message || 'Sent successfully.';
+        setResultMessage(message);
+        setBanner(true, message);
+        form.reset();
+      } catch (err) {
+        const message = err && err.message ? err.message : 'Unexpected error.';
+        setResultMessage(message);
+        setBanner(false, message);
+      } finally {
+        sendButton.disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>

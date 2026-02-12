@@ -3,7 +3,7 @@ import mimetypes
 import os
 
 import requests
-from flask import Flask, render_template, request
+from flask import Flask, jsonify, render_template, request
 
 BASE_URL = "http://localhost:3000"
 DEFAULT_COUNTRY_CODE = os.getenv("DEFAULT_COUNTRY_CODE", "961")
@@ -71,14 +71,17 @@ def upload_to_data_url(uploaded_file) -> str:
     return f"data:{mime_type};base64,{b64}"
 
 
-def post_json(endpoint: str, payload: dict, timeout: int) -> dict:
+def call_node_api(method: str, endpoint: str, payload: dict | None = None, timeout: int = 10) -> dict:
+    method = method.upper().strip()
+    url = f"{BASE_URL}{endpoint}"
+
     try:
-        response = requests.post(
-            f"{BASE_URL}{endpoint}",
-            json=payload,
-            timeout=timeout,
-        )
-        response.raise_for_status()
+        if method == "GET":
+            response = requests.get(url, timeout=timeout)
+        elif method == "POST":
+            response = requests.post(url, json=payload, timeout=timeout)
+        else:
+            raise RuntimeError(f"Unsupported HTTP method: {method}")
     except requests.RequestException as exc:
         raise RuntimeError(f"Failed to reach WhatsApp API: {exc}") from exc
 
@@ -87,9 +90,20 @@ def post_json(endpoint: str, payload: dict, timeout: int) -> dict:
     except ValueError as exc:
         raise RuntimeError("WhatsApp API returned a non-JSON response.") from exc
 
+    if not response.ok:
+        if isinstance(data, dict):
+            raise RuntimeError(
+                data.get("error") or f"WhatsApp API failed with status {response.status_code}."
+            )
+        raise RuntimeError(f"WhatsApp API failed with status {response.status_code}.")
+
+    return data
+
+
+def post_json(endpoint: str, payload: dict, timeout: int) -> dict:
+    data = call_node_api("POST", endpoint, payload=payload, timeout=timeout)
     if not data.get("ok"):
         raise RuntimeError(data.get("error") or "Unknown error from WhatsApp API.")
-
     return data
 
 
@@ -114,48 +128,73 @@ def send_media(to: str, filename: str, caption: str, data_url: str) -> None:
     )
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.get("/")
 def home():
-    form_values = {"phone": "", "message": ""}
-    status_message = None
-    status_error = False
+    return render_template("index.html", default_country_code=DEFAULT_COUNTRY_CODE)
 
-    if request.method == "POST":
-        form_values["phone"] = request.form.get("phone", "").strip()
-        form_values["message"] = request.form.get("message", "").strip()
-        uploaded_file = request.files.get("media")
 
-        try:
-            to = normalize_to_whatsapp_id(form_values["phone"])
-            has_media = bool(uploaded_file and uploaded_file.filename)
-            has_message = bool(form_values["message"])
+@app.post("/api/auth/start")
+def api_auth_start():
+    try:
+        data = call_node_api("POST", "/auth/start", payload={}, timeout=10)
+        if not data.get("ok"):
+            raise RuntimeError(data.get("error") or "Failed to start WhatsApp login.")
+        return jsonify(data)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
-            if not has_message and not has_media:
-                raise ValueError("Write a message or choose a media file.")
 
-            if has_media:
-                data_url = upload_to_data_url(uploaded_file)
-                send_media(
-                    to=to,
-                    filename=uploaded_file.filename,
-                    caption=form_values["message"],
-                    data_url=data_url,
-                )
-                status_message = f"Media sent to {to}."
-            else:
-                send_text(to=to, message=form_values["message"])
-                status_message = f"Text sent to {to}."
-        except Exception as exc:
-            status_error = True
-            status_message = str(exc)
+@app.get("/api/auth/status")
+def api_auth_status():
+    try:
+        data = call_node_api("GET", "/auth/status", timeout=10)
+        if not data.get("ok"):
+            raise RuntimeError(data.get("error") or "Failed to read WhatsApp status.")
+        return jsonify(data)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
-    return render_template(
-        "index.html",
-        form_values=form_values,
-        status_message=status_message,
-        status_error=status_error,
-        default_country_code=DEFAULT_COUNTRY_CODE,
-    )
+
+@app.post("/api/send")
+def api_send():
+    phone = request.form.get("phone", "").strip()
+    message = request.form.get("message", "").strip()
+    uploaded_file = request.files.get("media")
+
+    try:
+        to = normalize_to_whatsapp_id(phone)
+        has_media = bool(uploaded_file and uploaded_file.filename)
+        has_message = bool(message)
+
+        if not has_message and not has_media:
+            raise ValueError("Write a message or choose a media file.")
+
+        if has_media:
+            data_url = upload_to_data_url(uploaded_file)
+            send_media(
+                to=to,
+                filename=uploaded_file.filename,
+                caption=message,
+                data_url=data_url,
+            )
+            return jsonify(
+                {
+                    "ok": True,
+                    "message": f"Media sent to {to}. You are logged out; a new QR code will be required next send.",
+                }
+            )
+
+        send_text(to=to, message=message)
+        return jsonify(
+            {
+                "ok": True,
+                "message": f"Text sent to {to}. You are logged out; a new QR code will be required next send.",
+            }
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 if __name__ == "__main__":
