@@ -38,8 +38,72 @@
       padding: 24px;
     }
 
+    .layout {
+      width: min(1120px, 100%);
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .sidebar {
+      background: var(--panel);
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
+      padding: 16px;
+      display: grid;
+      gap: 8px;
+      max-height: calc(100vh - 48px);
+      overflow: auto;
+    }
+
+    .sidebar h2 {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+
+    .history-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: grid;
+      gap: 8px;
+    }
+
+    .history-item {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 10px;
+      background: #ffffff;
+      display: grid;
+      gap: 4px;
+    }
+
+    .history-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    .history-meta {
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.35;
+    }
+
+    .history-empty {
+      border: 1px dashed #d1d5db;
+      border-radius: 10px;
+      padding: 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      background: #ffffff;
+    }
+
     .card {
-      width: min(720px, 100%);
+      width: 100%;
       background: var(--panel);
       border: 1px solid #e5e7eb;
       border-radius: 16px;
@@ -227,6 +291,16 @@
       }
     }
 
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        max-height: none;
+      }
+    }
+
     @media (max-width: 640px) {
       .header,
       form {
@@ -246,58 +320,80 @@
   </style>
 </head>
 <body>
-  <main class="card">
-    <header class="header">
-      <h1>WhatsApp Sender</h1>
-      <p class="hint">
-        Enter the phone once. You can type local digits or full country code, and it will be converted to WhatsApp format automatically.
-      </p>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>Uploaded Excel Files</h2>
       <p class="small">
-        Default country code for local numbers: +{{ default_country_code }}
+        This list contains Excel files sent from this app.
       </p>
-    </header>
+      <ul id="history-list" class="history-list">
+        {% if uploaded_excel_files %}
+          {% for file in uploaded_excel_files %}
+            <li class="history-item">
+              <div class="history-name">{{ file.display_name }}</div>
+              <div class="history-meta">{{ file.modified_at }} - {{ file.size_label }}</div>
+            </li>
+          {% endfor %}
+        {% else %}
+          <li class="history-empty">No Excel files uploaded yet.</li>
+        {% endif %}
+      </ul>
+    </aside>
 
-    <div id="status" class="status hidden"></div>
+    <main class="card">
+      <header class="header">
+        <h1>WhatsApp Sender</h1>
+        <p class="hint">
+          Enter the phone once. You can type local digits or full country code, and it will be converted to WhatsApp format automatically.
+        </p>
+        <p class="small">
+          Default country code for local numbers: +{{ default_country_code }}
+        </p>
+      </header>
 
-    <form id="send-form" method="post" enctype="multipart/form-data">
-      <label>
-        Phone Number
-        <input
-          type="text"
-          name="phone"
-          id="phone-input"
-          placeholder="81744432 or 96181744432"
-        >
-      </label>
+      <div id="status" class="status hidden"></div>
 
-      <label>
-        Message
-        <textarea
-          name="message"
-          placeholder="Write text message. If you choose media, this is used as caption."
-        ></textarea>
-      </label>
+      <form id="send-form" method="post" enctype="multipart/form-data">
+        <label>
+          Phone Number
+          <input
+            type="text"
+            name="phone"
+            id="phone-input"
+            placeholder="81744432 or 96181744432"
+          >
+        </label>
 
-      <p class="small">
-        Use Excel variables inside message like <code>{% raw %}{{name}}{% endraw %}</code> or <code>{% raw %}{{password}}{% endraw %}</code>.
-      </p>
+        <label>
+          Message
+          <textarea
+            name="message"
+            id="message-input"
+            placeholder="Write text message. If you choose media, this is used as caption."
+          >{{- default_message_template -}}</textarea>
+        </label>
 
-      <label>
-        Media (Optional)
-        <input type="file" name="media" accept="image/*,video/*,.pdf,.doc,.docx,.txt">
-      </label>
+        <p class="small">
+          Use Excel variables inside message like <code>{% raw %}{{name}}{% endraw %}</code> or <code>{% raw %}{{password}}{% endraw %}</code>.
+        </p>
 
-      <label>
-        Excel Contacts (Optional)
-        <input type="file" name="contacts_file" id="contacts-file-input" accept=".xlsx,.xlsm,.xltx,.xltm">
-      </label>
-      <p class="small">
-        If Excel is uploaded, it must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
-      </p>
+        <label>
+          Media (Optional)
+          <input type="file" name="media" accept="image/*,video/*,.pdf,.doc,.docx,.txt">
+        </label>
 
-      <button id="send-button" type="submit">Send</button>
-    </form>
-  </main>
+        <label>
+          Excel Contacts (Optional)
+          <input type="file" name="contacts_file" id="contacts-file-input" accept=".xlsx,.xlsm,.xltx,.xltm">
+        </label>
+        <p class="small">
+          If Excel is uploaded, it must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
+        </p>
+
+        <button id="send-button" type="submit">Send</button>
+      </form>
+    </main>
+  </div>
 
   <div id="qr-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="qr-title">
     <div class="modal-card">
@@ -322,6 +418,9 @@
     const closeModalButton = document.getElementById('close-modal');
     const phoneInput = document.getElementById('phone-input');
     const contactsFileInput = document.getElementById('contacts-file-input');
+    const messageInput = document.getElementById('message-input');
+    const historyList = document.getElementById('history-list');
+    const defaultMessageTemplate = messageInput.value;
 
     function setBanner(ok, message) {
       statusBox.className = `status ${ok ? 'ok' : 'error'}`;
@@ -383,6 +482,7 @@
         MISSING_TARGET: 'Enter a phone number or upload an Excel file.',
         VALIDATION_ERROR: fallbackMessage || 'Please check your input and try again.',
         INVALID_CONTACTS_FILE: 'Upload a valid Excel file (.xlsx).',
+        CONTACTS_SAVE_FAILED: 'Could not save uploaded Excel file. Check disk space and try again.',
         EXCEL_PARSE_ERROR: 'Could not read the Excel file. Please check the format and try again.',
         EXCEL_EMPTY: 'Excel file is empty.',
         EXCEL_MISSING_NUMBERS: 'Excel file must contain a "NUMBERS" column in the first row.',
@@ -434,6 +534,46 @@
       }
 
       return data;
+    }
+
+    function renderContactsHistory(files) {
+      historyList.innerHTML = '';
+
+      if (!files || files.length === 0) {
+        const emptyItem = document.createElement('li');
+        emptyItem.className = 'history-empty';
+        emptyItem.textContent = 'No Excel files uploaded yet.';
+        historyList.appendChild(emptyItem);
+        return;
+      }
+
+      for (const file of files) {
+        const item = document.createElement('li');
+        item.className = 'history-item';
+
+        const nameNode = document.createElement('div');
+        nameNode.className = 'history-name';
+        nameNode.textContent = file.display_name || file.name || 'contacts.xlsx';
+
+        const metaNode = document.createElement('div');
+        metaNode.className = 'history-meta';
+        const modifiedAt = file.modified_at || '';
+        const sizeLabel = file.size_label || '';
+        metaNode.textContent = [modifiedAt, sizeLabel].filter(Boolean).join(' - ');
+
+        item.appendChild(nameNode);
+        item.appendChild(metaNode);
+        historyList.appendChild(item);
+      }
+    }
+
+    async function refreshContactsHistory() {
+      try {
+        const result = await fetchJson('/api/contacts/history');
+        renderContactsHistory(result.files || []);
+      } catch (_err) {
+        // History refresh should never block the main flow.
+      }
     }
 
     function updateModalFromStatus(data) {
@@ -496,6 +636,7 @@
 
       const hasPhone = Boolean(phoneInput.value.trim());
       const hasExcel = Boolean(contactsFileInput.files && contactsFileInput.files.length > 0);
+      const hadExcelUpload = hasExcel;
       if (!hasPhone && !hasExcel) {
         const message = humanizeApiError('MISSING_TARGET');
         setResultMessage(message);
@@ -514,6 +655,10 @@
         setResultMessage(message);
         setBanner(true, message);
         form.reset();
+        messageInput.value = defaultMessageTemplate;
+        if (hadExcelUpload) {
+          await refreshContactsHistory();
+        }
       } catch (err) {
         const message = err && err.message ? err.message : 'Unexpected error.';
         setResultMessage(message);
@@ -522,6 +667,8 @@
         sendButton.disabled = false;
       }
     });
+
+    refreshContactsHistory();
   </script>
 </body>
 </html>

@@ -9,18 +9,25 @@ import subprocess
 import threading
 import time
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 
 import requests
 from flask import Flask, jsonify, render_template, request
 from openpyxl import load_workbook
 from requests import exceptions as requests_exceptions
+from werkzeug.utils import secure_filename
 
 BASE_URL = "http://localhost:3000"
 DEFAULT_COUNTRY_CODE = os.getenv("DEFAULT_COUNTRY_CODE", "961")
 NODE_PROCESS = None
 PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
 BATCH_SEND_DELAY_SECONDS = float(os.getenv("BATCH_SEND_DELAY_SECONDS", "0.8"))
+DEFAULT_MESSAGE_TEXT = "Hello {{name}}, your password is {{password}}."
+PROJECT_ROOT = Path(__file__).resolve().parent
+TEMPLATE_FILE_PATH = PROJECT_ROOT / "template.txt"
+CONTACTS_UPLOAD_DIR = PROJECT_ROOT / "data" / "contacts_uploads"
+ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xltx", ".xltm"}
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
@@ -33,6 +40,93 @@ class AppError(Exception):
         self.message = message
         self.status = status
         self.details = details
+
+
+def _is_valid_excel_filename(filename: str) -> bool:
+    suffix = Path(filename).suffix.lower()
+    return suffix in ALLOWED_EXCEL_EXTENSIONS
+
+
+def _format_size(num_bytes: int) -> str:
+    size = float(max(num_bytes, 0))
+    units = ["B", "KB", "MB", "GB"]
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            if unit == "B":
+                return f"{int(size)} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return "0 B"
+
+
+def load_default_message_template() -> str:
+    try:
+        if TEMPLATE_FILE_PATH.exists():
+            file_text = TEMPLATE_FILE_PATH.read_text(encoding="utf-8").strip()
+            if file_text:
+                return file_text
+    except OSError:
+        pass
+    return DEFAULT_MESSAGE_TEXT
+
+
+def save_contacts_upload(filename: str, content: bytes) -> None:
+    CONTACTS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = secure_filename(Path(filename).name)
+    if not safe_name:
+        safe_name = "contacts.xlsx"
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    stored_name = f"{timestamp}_{safe_name}"
+    destination = CONTACTS_UPLOAD_DIR / stored_name
+
+    try:
+        destination.write_bytes(content)
+    except OSError as exc:
+        raise AppError(
+            code="CONTACTS_SAVE_FAILED",
+            message="Could not save the uploaded Excel file.",
+            status=500,
+            details=str(exc),
+        ) from exc
+
+
+def list_saved_contacts_files() -> list[dict]:
+    if not CONTACTS_UPLOAD_DIR.exists():
+        return []
+
+    collected: list[tuple[Path, float]] = []
+    for path in CONTACTS_UPLOAD_DIR.iterdir():
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in ALLOWED_EXCEL_EXTENSIONS:
+            continue
+        try:
+            collected.append((path, path.stat().st_mtime))
+        except OSError:
+            continue
+
+    files: list[dict] = []
+    for path, _mtime in sorted(collected, key=lambda item: item[1], reverse=True):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+
+        filename_parts = path.name.split("_", 3)
+        display_name = filename_parts[3] if len(filename_parts) == 4 else path.name
+
+        files.append(
+            {
+                "name": path.name,
+                "display_name": display_name,
+                "modified_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                "size_bytes": stat.st_size,
+                "size_label": _format_size(stat.st_size),
+            }
+        )
+
+    return files
 
 
 def _json_error(code: str, message: str, status: int, details: str | None = None):
@@ -171,9 +265,8 @@ def _cell_to_text(value) -> str:
     return str(value).strip()
 
 
-def parse_excel_contacts(contacts_file) -> list[dict]:
-    filename = (contacts_file.filename or "").lower()
-    if not filename.endswith((".xlsx", ".xlsm", ".xltx", ".xltm")):
+def parse_excel_contacts(filename: str, content: bytes) -> list[dict]:
+    if not _is_valid_excel_filename(filename):
         raise AppError(
             code="INVALID_CONTACTS_FILE",
             message="Upload a valid Excel .xlsx file.",
@@ -181,7 +274,7 @@ def parse_excel_contacts(contacts_file) -> list[dict]:
         )
 
     try:
-        workbook = load_workbook(filename=io.BytesIO(contacts_file.read()), data_only=True)
+        workbook = load_workbook(filename=io.BytesIO(content), data_only=True)
     except Exception as exc:
         raise AppError(
             code="EXCEL_PARSE_ERROR",
@@ -379,7 +472,12 @@ def logout_session() -> None:
 
 @app.get("/")
 def home():
-    return render_template("index.html", default_country_code=DEFAULT_COUNTRY_CODE)
+    return render_template(
+        "index.html",
+        default_country_code=DEFAULT_COUNTRY_CODE,
+        default_message_template=load_default_message_template(),
+        uploaded_excel_files=list_saved_contacts_files(),
+    )
 
 
 @app.post("/api/auth/start")
@@ -414,6 +512,14 @@ def api_auth_status():
         return _handle_api_exception(exc)
 
 
+@app.get("/api/contacts/history")
+def api_contacts_history():
+    try:
+        return jsonify({"ok": True, "files": list_saved_contacts_files()})
+    except Exception as exc:
+        return _handle_api_exception(exc)
+
+
 @app.post("/api/send")
 def api_send():
     phone = request.form.get("phone", "").strip()
@@ -441,7 +547,31 @@ def api_send():
             )
 
         if has_contacts_file:
-            rows = parse_excel_contacts(contacts_file)
+            contacts_filename = (contacts_file.filename or "").strip()
+            if not contacts_filename:
+                raise AppError(
+                    code="INVALID_CONTACTS_FILE",
+                    message="Upload a valid Excel .xlsx file.",
+                    status=400,
+                )
+
+            if not _is_valid_excel_filename(contacts_filename):
+                raise AppError(
+                    code="INVALID_CONTACTS_FILE",
+                    message="Upload a valid Excel .xlsx file.",
+                    status=400,
+                )
+
+            contacts_bytes = contacts_file.read()
+            if not contacts_bytes:
+                raise AppError(
+                    code="EXCEL_EMPTY",
+                    message="Excel file is empty.",
+                    status=400,
+                )
+
+            save_contacts_upload(contacts_filename, contacts_bytes)
+            rows = parse_excel_contacts(contacts_filename, contacts_bytes)
             media_data_url = upload_to_data_url(uploaded_file) if has_media else ""
             media_filename = uploaded_file.filename if has_media else ""
 
