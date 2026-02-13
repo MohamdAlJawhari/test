@@ -1,16 +1,23 @@
 :root {
-  --bg: #f4efe7;
-  --panel: #fffdf8;
-  --text: #1f2937;
-  --muted: #6b7280;
-  --accent: #0f766e;
-  --accent-dark: #115e59;
-  --error-bg: #fef2f2;
-  --error-border: #fecaca;
-  --error-text: #991b1b;
-  --ok-bg: #ecfdf5;
-  --ok-border: #bbf7d0;
-  --ok-text: #14532d;
+  --bg-top: #edf4ff;
+  --bg-bottom: #eef8f1;
+  --panel: #ffffff;
+  --panel-soft: #f7fafc;
+  --text: #1b2533;
+  --muted: #5d6b7b;
+  --accent: #1d6fd8;
+  --accent-dark: #1556a6;
+  --line: #d9e1ea;
+  --line-strong: #c6d1de;
+  --excel-grid: #d2d9e3;
+  --excel-head: #f2f5fa;
+  --excel-focus: #2b78ff;
+  --error-bg: #fff1f1;
+  --error-border: #f2b8b5;
+  --error-text: #9b2c2c;
+  --ok-bg: #eefaf1;
+  --ok-border: #bfe4c8;
+  --ok-text: #216737;
 }
 
 * {
@@ -20,12 +27,9 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
   color: var(--text);
-  background:
-    radial-gradient(circle at top right, #fde68a 0, transparent 30%),
-    radial-gradient(circle at bottom left, #99f6e4 0, transparent 35%),
-    var(--bg);
+  background: linear-gradient(140deg, var(--bg-top), var(--bg-bottom));
   padding: 22px;
   display: grid;
   place-items: start center;
@@ -34,22 +38,24 @@ body {
 .card {
   width: min(980px, 100%);
   background: var(--panel);
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 12px 28px rgba(18, 40, 72, 0.08);
   overflow: hidden;
 }
 
 .header {
   padding: 20px 24px 14px;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--line);
   display: grid;
   gap: 8px;
+  background: var(--panel-soft);
 }
 
 h1 {
   margin: 0;
   font-size: 1.42rem;
+  color: #173b68;
 }
 
 .hint {
@@ -67,13 +73,13 @@ h1 {
 
 .link-btn {
   text-decoration: none;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--line-strong);
   color: var(--text);
   background: #fff;
   border-radius: 8px;
   padding: 7px 10px;
   font-size: 0.84rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .link-btn:hover {
@@ -90,7 +96,7 @@ h1 {
 .status {
   border-radius: 10px;
   padding: 10px 12px;
-  font-weight: 600;
+  font-weight: 700;
   border: 1px solid transparent;
 }
 
@@ -124,7 +130,7 @@ h1 {
 
 label {
   font-size: 0.92rem;
-  font-weight: 600;
+  font-weight: 700;
   display: grid;
   gap: 6px;
 }
@@ -132,12 +138,19 @@ label {
 input,
 textarea {
   width: 100%;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--line-strong);
   border-radius: 10px;
   font-size: 0.95rem;
   padding: 10px 12px;
   color: var(--text);
   background: #ffffff;
+}
+
+input:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(29, 111, 216, 0.18);
 }
 
 textarea {
@@ -146,12 +159,12 @@ textarea {
 }
 
 button {
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 10px;
   background: var(--accent);
   color: #ffffff;
   font-size: 0.95rem;
-  font-weight: 700;
+  font-weight: 800;
   padding: 10px 14px;
   cursor: pointer;
 }
@@ -172,7 +185,7 @@ button:disabled {
   border-radius: 8px;
   padding: 7px 10px;
   font-size: 0.84rem;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .actions .danger-btn:hover {
@@ -187,96 +200,117 @@ button:disabled {
 }
 
 .preview-wrap {
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
+  border: 1px solid var(--excel-grid);
+  border-radius: 8px;
   overflow: auto;
-  max-height: 420px;
+  max-height: 460px;
   background: #ffffff;
 }
 
 .preview-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.83rem;
+  font-size: 0.84rem;
+  table-layout: fixed;
 }
 
 .preview-table th,
 .preview-table td {
-  border: 1px solid #e5e7eb;
-  padding: 4px;
+  border: 1px solid var(--excel-grid);
+  padding: 0;
   text-align: left;
-  vertical-align: top;
-  min-width: 120px;
-  max-width: 260px;
-  overflow-wrap: anywhere;
+  vertical-align: middle;
+  min-width: 130px;
+  max-width: 280px;
+  overflow: hidden;
 }
 
 .preview-table th {
-  background: #f9fafb;
+  background: var(--excel-head);
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
 .header-cell-wrap {
   display: grid;
-  gap: 4px;
+  gap: 0;
 }
 
 .row-actions-head {
-  min-width: 64px !important;
-  max-width: 64px !important;
+  min-width: 58px !important;
+  max-width: 58px !important;
   text-align: center !important;
+  font-weight: 700;
+  color: #44556a;
 }
 
 .row-actions-cell {
-  min-width: 64px !important;
-  max-width: 64px !important;
-  background: #f9fafb;
+  min-width: 58px !important;
+  max-width: 58px !important;
+  background: var(--excel-head);
+  padding: 2px;
 }
 
 .cell-controls {
   display: flex;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .col-controls {
   justify-content: flex-end;
+  padding: 2px;
+  border-bottom: 1px solid var(--excel-grid);
+  background: #ebf1f8;
 }
 
 .mini-btn {
   width: 20px;
   height: 20px;
   padding: 0;
-  border-radius: 6px;
-  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  border: 1px solid #b6c2d0;
   background: #ffffff;
-  color: #0f172a;
+  color: #1d2a3a;
   font-size: 0.78rem;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1;
 }
 
 .mini-btn:hover {
-  background: #f3f4f6;
-  border-color: #9ca3af;
+  background: #e8f1ff;
+  border-color: #8ea9c7;
 }
 
 .table-input {
   width: 100%;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.83rem;
-  padding: 6px 7px;
+  border: 0;
+  border-radius: 0;
+  font-size: 0.84rem;
+  padding: 7px 8px;
   color: var(--text);
-  background: #fff;
+  background: transparent;
+  box-shadow: none;
+}
+
+.table-input:hover {
+  background: #f8fbff;
+}
+
+.table-input:focus {
+  outline: none;
+  background: #eef5ff;
+  box-shadow: inset 0 0 0 2px var(--excel-focus);
+}
+
+.header-input {
+  font-weight: 700;
 }
 
 .header-input[data-locked="1"] {
-  background: #f3f4f6;
-  color: #111827;
-  font-weight: 700;
+  background: #e9edf3;
+  color: #1c2b3d;
 }
 
 @media (max-width: 640px) {
