@@ -11,6 +11,7 @@ from pathlib import Path
 
 import requests
 from flask import Flask, jsonify, render_template, request
+from requests import exceptions as requests_exceptions
 
 BASE_URL = "http://localhost:3000"
 DEFAULT_COUNTRY_CODE = os.getenv("DEFAULT_COUNTRY_CODE", "961")
@@ -18,6 +19,77 @@ NODE_PROCESS = None
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
+
+
+class AppError(Exception):
+    def __init__(self, code: str, message: str, status: int = 500, details: str | None = None):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.status = status
+        self.details = details
+
+
+def _json_error(code: str, message: str, status: int, details: str | None = None):
+    payload = {"ok": False, "error_code": code, "error": message}
+    if details:
+        payload["details"] = details
+    return jsonify(payload), status
+
+
+def _handle_api_exception(exc: Exception):
+    if isinstance(exc, AppError):
+        return _json_error(exc.code, exc.message, exc.status, exc.details)
+    return _json_error(
+        code="UNEXPECTED_SERVER_ERROR",
+        message="Unexpected server error. Please try again.",
+        status=500,
+        details=str(exc),
+    )
+
+
+def _map_node_error(status_code: int, raw_error: str | None = None) -> AppError:
+    details = raw_error or ""
+    lowered = details.lower()
+
+    if "not ready" in lowered or status_code == 503:
+        return AppError(
+            code="WHATSAPP_NOT_READY",
+            message="WhatsApp is not ready yet. Keep the QR window open and scan again.",
+            status=503,
+            details=details,
+        )
+
+    if "timed out" in lowered:
+        return AppError(
+            code="DELIVERY_TIMEOUT",
+            message="The connection is slow. Sending is taking longer than expected. It may still arrive.",
+            status=504,
+            details=details,
+        )
+
+    if "ack failed" in lowered:
+        return AppError(
+            code="DELIVERY_FAILED",
+            message="Message delivery failed. Please verify the number and try again.",
+            status=502,
+            details=details,
+        )
+
+    if status_code == 413:
+        return AppError(
+            code="MEDIA_TOO_LARGE",
+            message="Selected media is too large for this request. Try a smaller file.",
+            status=413,
+            details=details,
+        )
+
+    return AppError(
+        code="WHATSAPP_API_ERROR",
+        message="WhatsApp service returned an error. Please try again.",
+        status=max(status_code, 500),
+        details=details,
+    )
 
 
 def normalize_to_whatsapp_id(raw_phone: str) -> str:
@@ -89,21 +161,47 @@ def call_node_api(method: str, endpoint: str, payload: dict | None = None, timeo
         elif method == "POST":
             response = requests.post(url, json=payload, timeout=timeout)
         else:
-            raise RuntimeError(f"Unsupported HTTP method: {method}")
-    except requests.RequestException as exc:
-        raise RuntimeError(f"Failed to reach WhatsApp API: {exc}") from exc
+            raise AppError(
+                code="INVALID_METHOD",
+                message="Internal server configuration error.",
+                status=500,
+                details=f"Unsupported HTTP method: {method}",
+            )
+    except requests_exceptions.Timeout as exc:
+        raise AppError(
+            code="NODE_API_TIMEOUT",
+            message="WhatsApp service is taking too long to respond. Check your connection and try again.",
+            status=504,
+            details=str(exc),
+        ) from exc
+    except requests_exceptions.ConnectionError as exc:
+        raise AppError(
+            code="NODE_API_UNREACHABLE",
+            message="Cannot connect to WhatsApp service. Wait a few seconds and try again.",
+            status=503,
+            details=str(exc),
+        ) from exc
+    except requests_exceptions.RequestException as exc:
+        raise AppError(
+            code="NODE_API_REQUEST_ERROR",
+            message="Network error while contacting WhatsApp service.",
+            status=502,
+            details=str(exc),
+        ) from exc
 
     try:
         data = response.json()
     except ValueError as exc:
-        raise RuntimeError("WhatsApp API returned a non-JSON response.") from exc
+        raise AppError(
+            code="NODE_API_BAD_RESPONSE",
+            message="WhatsApp service returned an unexpected response.",
+            status=502,
+            details=str(exc),
+        ) from exc
 
     if not response.ok:
-        if isinstance(data, dict):
-            raise RuntimeError(
-                data.get("error") or f"WhatsApp API failed with status {response.status_code}."
-            )
-        raise RuntimeError(f"WhatsApp API failed with status {response.status_code}.")
+        raw_error = data.get("error") if isinstance(data, dict) else None
+        raise _map_node_error(status_code=response.status_code, raw_error=raw_error)
 
     return data
 
@@ -111,7 +209,7 @@ def call_node_api(method: str, endpoint: str, payload: dict | None = None, timeo
 def post_json(endpoint: str, payload: dict, timeout: int) -> dict:
     data = call_node_api("POST", endpoint, payload=payload, timeout=timeout)
     if not data.get("ok"):
-        raise RuntimeError(data.get("error") or "Unknown error from WhatsApp API.")
+        raise _map_node_error(status_code=502, raw_error=data.get("error"))
     return data
 
 
@@ -146,10 +244,15 @@ def api_auth_start():
     try:
         data = call_node_api("POST", "/auth/start", payload={}, timeout=10)
         if not data.get("ok"):
-            raise RuntimeError(data.get("error") or "Failed to start WhatsApp login.")
+            raise AppError(
+                code="AUTH_START_FAILED",
+                message="Failed to start WhatsApp login.",
+                status=502,
+                details=data.get("error"),
+            )
         return jsonify(data)
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return _handle_api_exception(exc)
 
 
 @app.get("/api/auth/status")
@@ -157,10 +260,15 @@ def api_auth_status():
     try:
         data = call_node_api("GET", "/auth/status", timeout=10)
         if not data.get("ok"):
-            raise RuntimeError(data.get("error") or "Failed to read WhatsApp status.")
+            raise AppError(
+                code="AUTH_STATUS_FAILED",
+                message="Failed to read WhatsApp login status.",
+                status=502,
+                details=data.get("error"),
+            )
         return jsonify(data)
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return _handle_api_exception(exc)
 
 
 @app.post("/api/send")
@@ -175,7 +283,11 @@ def api_send():
         has_message = bool(message)
 
         if not has_message and not has_media:
-            raise ValueError("Write a message or choose a media file.")
+            raise AppError(
+                code="MISSING_CONTENT",
+                message="Write a message or choose a media file.",
+                status=400,
+            )
 
         if has_media:
             data_url = upload_to_data_url(uploaded_file)
@@ -200,9 +312,22 @@ def api_send():
             }
         )
     except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return _json_error(
+            code="VALIDATION_ERROR",
+            message=str(exc),
+            status=400,
+        )
     except Exception as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        return _handle_api_exception(exc)
+
+
+@app.errorhandler(413)
+def handle_payload_too_large(_exc):
+    return _json_error(
+        code="MEDIA_TOO_LARGE",
+        message="Selected media is too large. Choose a smaller file and try again.",
+        status=413,
+    )
 
 
 def is_port_available(port: int, host: str = "127.0.0.1") -> bool:

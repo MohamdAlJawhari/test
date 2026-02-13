@@ -344,17 +344,69 @@
       qrImage.removeAttribute('src');
     }
 
+    function createUiError({ code = 'UNKNOWN_ERROR', message = 'Unexpected error.', status = 0, details = '' }) {
+      const error = new Error(message);
+      error.code = code;
+      error.status = status;
+      error.details = details;
+      return error;
+    }
+
+    function humanizeApiError(code, fallbackMessage = '') {
+      const map = {
+        NODE_API_TIMEOUT: 'WhatsApp is taking too long to respond. Your internet may be slow. Please try again.',
+        NODE_API_UNREACHABLE: 'Cannot reach WhatsApp service yet. Wait a few seconds and try again.',
+        NODE_API_REQUEST_ERROR: 'Network issue while contacting WhatsApp service. Please check your connection.',
+        NODE_API_BAD_RESPONSE: 'WhatsApp service returned an invalid response. Try restarting the app.',
+        WHATSAPP_NOT_READY: 'WhatsApp is not ready. Keep the QR code open and scan it again.',
+        DELIVERY_TIMEOUT: 'Sending is slower than expected. The message may still arrive. Check WhatsApp and retry if needed.',
+        DELIVERY_FAILED: 'Message delivery failed. Verify the phone number and try again.',
+        WHATSAPP_API_ERROR: 'WhatsApp service returned an error. Please try again.',
+        AUTH_START_FAILED: 'Could not start WhatsApp login. Please retry.',
+        AUTH_STATUS_FAILED: 'Could not read WhatsApp login status. Please retry.',
+        MEDIA_TOO_LARGE: 'The selected media is too large. Choose a smaller file.',
+        MISSING_CONTENT: 'Write a message or choose a media file.',
+        VALIDATION_ERROR: fallbackMessage || 'Please check your input and try again.',
+        BROWSER_NETWORK_ERROR: 'Cannot reach local app server. Make sure python main.py is still running.',
+        INVALID_SERVER_RESPONSE: 'Server returned an invalid response. Try restarting the app.',
+        HTTP_413: 'The selected media is too large. Choose a smaller file.',
+      };
+
+      return map[code] || fallbackMessage || 'Something went wrong. Please try again.';
+    }
+
     async function fetchJson(url, options = {}) {
-      const response = await fetch(url, options);
+      let response;
+      try {
+        response = await fetch(url, options);
+      } catch (networkErr) {
+        throw createUiError({
+          code: 'BROWSER_NETWORK_ERROR',
+          message: humanizeApiError('BROWSER_NETWORK_ERROR'),
+          details: networkErr && networkErr.message ? networkErr.message : '',
+        });
+      }
+
       let data;
       try {
         data = await response.json();
       } catch (_err) {
-        throw new Error('Invalid response from server.');
+        throw createUiError({
+          code: 'INVALID_SERVER_RESPONSE',
+          message: humanizeApiError('INVALID_SERVER_RESPONSE'),
+          status: response.status,
+        });
       }
 
       if (!response.ok || !data.ok) {
-        throw new Error(data.error || `Request failed with status ${response.status}.`);
+        const code = data.error_code || `HTTP_${response.status}`;
+        const message = humanizeApiError(code, data.error || '');
+        throw createUiError({
+          code,
+          message,
+          status: response.status,
+          details: data.details || data.error || '',
+        });
       }
 
       return data;
