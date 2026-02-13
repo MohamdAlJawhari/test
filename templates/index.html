@@ -354,6 +354,16 @@
       <p class="small">
         Open any Excel to view preview and edit details on a dedicated page.
       </p>
+      <label>
+        Upload New Excel (Optional)
+        <input
+          type="file"
+          name="contacts_file"
+          id="contacts-file-input"
+          accept=".xlsx,.xlsm,.xltx,.xltm"
+          form="send-form"
+        >
+      </label>
       <ul id="history-list" class="history-list">
         {% if uploaded_excel_files %}
           {% for file in uploaded_excel_files %}
@@ -413,12 +423,7 @@
         </label>
 
         <label>
-          Upload New Excel (Optional)
-          <input type="file" name="contacts_file" id="contacts-file-input" accept=".xlsx,.xlsm,.xltx,.xltm">
-        </label>
-
-        <label>
-          Or Select Existing Excel (Optional)
+          Select Existing Excel (Optional)
           <select name="existing_contacts_file" id="existing-contacts-select">
             <option value="">-- Select saved Excel file --</option>
             {% for file in uploaded_excel_files %}
