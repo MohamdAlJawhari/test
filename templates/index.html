@@ -517,6 +517,10 @@
       return error;
     }
 
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
     function humanizeApiError(code, fallbackMessage = '') {
       const map = {
         NODE_API_TIMEOUT: 'WhatsApp is taking too long to respond. Your internet may be slow. Please try again.',
@@ -556,10 +560,28 @@
       return map[code] || fallbackMessage || 'Something went wrong. Please try again.';
     }
 
+    async function fetchWithRetry(url, options = {}) {
+      const retryDelaysMs = [300, 900];
+      let lastError = null;
+
+      for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+        try {
+          return await fetch(url, options);
+        } catch (err) {
+          lastError = err;
+          if (attempt < retryDelaysMs.length) {
+            await sleep(retryDelaysMs[attempt]);
+          }
+        }
+      }
+
+      throw lastError || new Error('Network request failed.');
+    }
+
     async function fetchJson(url, options = {}) {
       let response;
       try {
-        response = await fetch(url, options);
+        response = await fetchWithRetry(url, options);
       } catch (networkErr) {
         throw createUiError({
           code: 'BROWSER_NETWORK_ERROR',
