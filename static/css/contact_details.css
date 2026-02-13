@@ -165,6 +165,21 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.actions .danger-btn {
+  border: 1px solid #ef4444;
+  background: #fff;
+  color: #991b1b;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.actions .danger-btn:hover {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
 .small {
   color: var(--muted);
   font-size: 0.84rem;

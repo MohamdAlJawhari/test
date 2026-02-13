@@ -15,7 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 import requests
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
 from openpyxl import load_workbook
 from requests import exceptions as requests_exceptions
 from werkzeug.utils import secure_filename
@@ -179,6 +179,20 @@ def _resolve_saved_contacts_path(file_name: str) -> Path:
         )
 
     return file_path
+
+
+def _remove_contacts_metadata(file_name: str) -> None:
+    metadata = _load_contacts_metadata()
+    if file_name in metadata:
+        metadata.pop(file_name, None)
+        _save_contacts_metadata(metadata)
+
+
+def _build_download_name(file_path: Path, display_name: str) -> str:
+    safe_display_name = secure_filename(display_name) or file_path.name
+    if Path(safe_display_name).suffix:
+        return safe_display_name
+    return f"{safe_display_name}{file_path.suffix}"
 
 
 def save_contacts_upload(filename: str, content: bytes) -> str:
@@ -1026,6 +1040,43 @@ def api_contacts_metadata(file_name: str):
 
         _set_contacts_metadata(file_name, display_name=display_name, description=description)
         return jsonify({"ok": True})
+    except Exception as exc:
+        return _handle_api_exception(exc)
+
+
+@app.get("/api/contacts/<path:file_name>/download")
+def api_contacts_download(file_name: str):
+    try:
+        file_path = _resolve_saved_contacts_path(file_name)
+        metadata = _load_contacts_metadata().get(file_path.name, {})
+        display_name = metadata.get("display_name") or _fallback_display_name(file_path.name)
+        download_name = _build_download_name(file_path, display_name)
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=download_name,
+            mimetype=mimetypes.guess_type(str(file_path))[0] or "application/octet-stream",
+        )
+    except Exception as exc:
+        return _handle_api_exception(exc)
+
+
+@app.delete("/api/contacts/<path:file_name>")
+def api_contacts_delete(file_name: str):
+    try:
+        file_path = _resolve_saved_contacts_path(file_name)
+        try:
+            file_path.unlink()
+        except OSError as exc:
+            raise AppError(
+                code="CONTACTS_DELETE_FAILED",
+                message="Could not delete contacts file.",
+                status=500,
+                details=str(exc),
+            ) from exc
+
+        _remove_contacts_metadata(file_path.name)
+        return jsonify({"ok": True, "message": "Contacts file deleted."})
     except Exception as exc:
         return _handle_api_exception(exc)
 

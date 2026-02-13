@@ -10,6 +10,7 @@
   const saveContentButton = document.getElementById('save-content-btn');
   const addRowButton = document.getElementById('add-row-btn');
   const addColButton = document.getElementById('add-col-btn');
+  const deleteFileButton = document.getElementById('delete-file-btn');
   const displayNameInput = document.getElementById('display-name');
   const descriptionInput = document.getElementById('description');
   const headerRow = document.getElementById('editable-head-row');
@@ -245,6 +246,49 @@
     }
   }
 
+  async function deleteFile() {
+    const label = displayNameInput.value.trim() || fileName;
+    const confirmed = window.confirm(
+      `Delete "${label}"?\nThis action cannot be undone.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    if (!deleteFileButton) {
+      return;
+    }
+
+    deleteFileButton.disabled = true;
+    try {
+      const response = await fetch(`/api/contacts/${encodeURIComponent(fileName)}`, {
+        method: 'DELETE',
+      });
+
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_err) {
+        throw new Error('Could not delete contacts file.');
+      }
+
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || 'Could not delete contacts file.');
+      }
+
+      setStatus(true, 'Contacts file deleted. Redirecting to sender...');
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 500);
+    } catch (err) {
+      setStatus(
+        false,
+        err && err.message ? err.message : 'Could not delete contacts file.'
+      );
+      deleteFileButton.disabled = false;
+    }
+  }
+
   if (saveMetaButton) {
     saveMetaButton.addEventListener('click', saveMetadata);
   }
@@ -259,5 +303,9 @@
 
   if (addColButton) {
     addColButton.addEventListener('click', () => addColumn());
+  }
+
+  if (deleteFileButton) {
+    deleteFileButton.addEventListener('click', deleteFile);
   }
 })();
