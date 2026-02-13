@@ -132,7 +132,7 @@ def send_media(to: str, filename: str, caption: str, data_url: str) -> None:
             "caption": caption,
             "base64": data_url,
         },
-        timeout=30,
+        timeout=120,
     )
 
 
