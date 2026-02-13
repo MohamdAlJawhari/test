@@ -3,16 +3,52 @@ from requests import exceptions as requests_exceptions
 
 from .errors import AppError
 
+
+def _safe_http_status(status_code: int) -> int:
+    """Keep real 4xx/5xx codes; fallback to 502 when status is invalid."""
+    return status_code if 400 <= status_code <= 599 else 502
+
+
 # Core client for communicating with the Node.js WhatsApp API service.
 def map_node_error(status_code: int, raw_error: str | None = None) -> AppError:
     details = raw_error or ""
     lowered = details.lower()
+    safe_status = _safe_http_status(status_code)
+
+    if (
+        "browser is already running" in lowered
+        or "userdatadir" in lowered
+        or "singletonlock" in lowered
+    ):
+        return AppError(
+            code="BROWSER_PROFILE_LOCKED",
+            message=(
+                "WhatsApp browser profile is locked by another running browser process. "
+                "Close Chrome/Edge processes using this session, then try Send again."
+            ),
+            status=409,
+            details=details,
+        )
+
+    if "spawn eperm" in lowered or "error no open browser" in lowered:
+        return AppError(
+            code="WHATSAPP_BROWSER_LAUNCH_FAILED",
+            message=(
+                "WhatsApp browser could not start due to a local permission/system restriction. "
+                "Restart the app, allow Node/Chrome in antivirus, and try again."
+            ),
+            status=503,
+            details=details,
+        )
 
     # Heuristic mapping of Node API errors to user-friendly messages and status codes.
-    if "not ready" in lowered or status_code == 503:
+    if "not ready" in lowered or safe_status == 503:
         return AppError(
             code="WHATSAPP_NOT_READY",
-            message="WhatsApp is not ready yet. Keep the QR window open and scan again.",
+            message=(
+                "WhatsApp is not ready yet. Keep the QR window open, scan it with your phone, "
+                "and wait for \"Login confirmed\" before sending."
+            ),
             status=503,
             details=details,
         )
@@ -21,7 +57,10 @@ def map_node_error(status_code: int, raw_error: str | None = None) -> AppError:
     if "timed out" in lowered:
         return AppError(
             code="DELIVERY_TIMEOUT",
-            message="The connection is slow. Sending is taking longer than expected. It may still arrive.",
+            message=(
+                "Delivery timed out while waiting for WhatsApp acknowledgment. "
+                "Check internet stability, wait a few seconds, then retry."
+            ),
             status=504,
             details=details,
         )
@@ -30,25 +69,109 @@ def map_node_error(status_code: int, raw_error: str | None = None) -> AppError:
     if "ack failed" in lowered:
         return AppError(
             code="DELIVERY_FAILED",
-            message="Message delivery failed. Please verify the number and try again.",
+            message=(
+                "WhatsApp did not confirm delivery for this number. "
+                "Verify the number format and that the target has WhatsApp, then try again."
+            ),
             status=502,
             details=details,
         )
 
     # 413 Payload Too Large is a common response when media exceeds limits.
-    if status_code == 413:
+    if safe_status == 413 or "too large" in lowered:
         return AppError(
             code="MEDIA_TOO_LARGE",
-            message="Selected media is too large for this request. Try a smaller file.",
+            message=(
+                "Selected media is too large for WhatsApp delivery in this request. "
+                "Compress the media or choose a smaller file."
+            ),
             status=413,
             details=details,
         )
 
-    # For other errors, return a generic message with details for debugging.
+    if "missing \"to\" or \"message\"" in lowered or safe_status == 400:
+        return AppError(
+            code="NODE_API_BAD_REQUEST",
+            message=(
+                "WhatsApp service rejected the request data. "
+                "Check phone number format, message text, and media fields, then retry."
+            ),
+            status=400,
+            details=details,
+        )
+
+    if safe_status == 401:
+        return AppError(
+            code="NODE_API_UNAUTHORIZED",
+            message=(
+                "WhatsApp session is not authorized. Start login again and scan a fresh QR code."
+            ),
+            status=401,
+            details=details,
+        )
+
+    if safe_status == 403:
+        return AppError(
+            code="NODE_API_FORBIDDEN",
+            message=(
+                "WhatsApp service denied this operation. Re-login and try again."
+            ),
+            status=403,
+            details=details,
+        )
+
+    if safe_status == 404:
+        return AppError(
+            code="NODE_API_ROUTE_NOT_FOUND",
+            message=(
+                "Internal WhatsApp API route was not found. Restart python main.py "
+                "to reload matching Flask/Node versions."
+            ),
+            status=404,
+            details=details,
+        )
+
+    if safe_status == 409:
+        return AppError(
+            code="NODE_API_CONFLICT",
+            message=(
+                "WhatsApp session is in a conflicting state. Wait a few seconds and retry. "
+                "If it repeats, restart the app."
+            ),
+            status=409,
+            details=details,
+        )
+
+    if safe_status == 429:
+        return AppError(
+            code="NODE_API_RATE_LIMIT",
+            message=(
+                "Too many requests were sent to WhatsApp too quickly. "
+                "Wait 30-60 seconds, then try again."
+            ),
+            status=429,
+            details=details,
+        )
+
+    if 500 <= safe_status <= 599:
+        return AppError(
+            code="NODE_API_SERVER_ERROR",
+            message=(
+                "WhatsApp service had an internal failure. "
+                "Retry once; if it repeats, restart python main.py."
+            ),
+            status=safe_status,
+            details=details,
+        )
+
+    # Keep status code accuracy instead of forcing everything to 500.
     return AppError(
         code="WHATSAPP_API_ERROR",
-        message="WhatsApp service returned an error. Please try again.",
-        status=max(status_code, 500),
+        message=(
+            "WhatsApp service returned an unexpected error. "
+            "Retry once; if it continues, restart python main.py."
+        ),
+        status=safe_status,
         details=details,
     )
 
@@ -161,4 +284,3 @@ class NodeApiClient:
                 status=502,
                 details=data.get("error"),
             )
-

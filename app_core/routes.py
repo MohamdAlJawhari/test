@@ -15,13 +15,13 @@ from .contacts import (
     load_contacts_metadata,
     parse_contacts_rows,
     read_contacts_preview,
-    read_contacts_table,
     remove_contacts_metadata,
     resolve_saved_contacts_path,
     sanitize_metadata_text,
     save_contacts_content,
     save_contacts_upload,
     set_contacts_metadata,
+    validate_contacts_file_for_upload,
 )
 from .errors import AppError, handle_api_exception, json_error
 from .messaging import normalize_to_whatsapp_id, render_message_template, upload_to_data_url
@@ -125,12 +125,7 @@ def register_routes(app, node_api: NodeApiClient) -> None:
                     status=400,
                 )
 
-            read_contacts_table(
-                filename=contacts_filename,
-                content=contacts_bytes,
-                error_code="EXCEL_PARSE_ERROR",
-                error_message="Could not read the contacts file. Please check the file format.",
-            )
+            validate_contacts_file_for_upload(contacts_filename, contacts_bytes)
 
             stored_name = save_contacts_upload(contacts_filename, contacts_bytes)
             file_info = next(
@@ -323,6 +318,7 @@ def register_routes(app, node_api: NodeApiClient) -> None:
             if has_contacts_file or has_existing_contacts_file:
                 contacts_filename = ""
                 contacts_bytes = b""
+                rows: list[dict] = []
 
                 if has_contacts_file:
                     contacts_filename = (contacts_file.filename or "").strip()
@@ -348,6 +344,7 @@ def register_routes(app, node_api: NodeApiClient) -> None:
                             status=400,
                         )
 
+                    rows = parse_contacts_rows(contacts_filename, contacts_bytes)
                     save_contacts_upload(contacts_filename, contacts_bytes)
                 else:
                     existing_path = resolve_saved_contacts_path(existing_contacts_file)
@@ -369,7 +366,7 @@ def register_routes(app, node_api: NodeApiClient) -> None:
                             status=400,
                         )
 
-                rows = parse_contacts_rows(contacts_filename, contacts_bytes)
+                    rows = parse_contacts_rows(contacts_filename, contacts_bytes)
                 media_data_url = upload_to_data_url(uploaded_file) if has_media else ""
                 media_filename = uploaded_file.filename if has_media else ""
 
@@ -482,4 +479,3 @@ def register_routes(app, node_api: NodeApiClient) -> None:
             message="Selected media is too large. Choose a smaller file and try again.",
             status=413,
         )
-

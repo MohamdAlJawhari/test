@@ -296,6 +296,34 @@ def read_contacts_table(
     return read_table_from_excel(content, error_code=error_code, error_message=error_message)
 
 
+def validate_contacts_file_for_upload(filename: str, content: bytes) -> None:
+    """
+    Validate that an uploaded contacts file is readable and has a NUMBERS column.
+    This check is used at upload time before storing the file in history.
+    """
+    headers, _rows = read_contacts_table(
+        filename=filename,
+        content=content,
+        error_code="EXCEL_PARSE_ERROR",
+        error_message="Could not read the contacts file. Please check the file format.",
+    )
+
+    if not headers:
+        raise AppError(
+            code="EXCEL_EMPTY",
+            message="Contacts file is empty.",
+            status=400,
+        )
+
+    normalized_headers = [header.upper() for header in headers]
+    if "NUMBERS" not in normalized_headers:
+        raise AppError(
+            code="EXCEL_MISSING_NUMBERS",
+            message='Contacts file must contain a "NUMBERS" column in the first row.',
+            status=400,
+        )
+
+
 def read_contacts_preview(
     file_path: Path,
     row_limit: int | None = CONTACTS_PREVIEW_ROW_LIMIT,
@@ -568,4 +596,3 @@ def parse_contacts_rows(filename: str, content: bytes) -> list[dict]:
         )
 
     return rows
-
