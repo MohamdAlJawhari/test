@@ -9,20 +9,21 @@
 <body>
   <div class="layout">
     <aside class="sidebar">
-      <h2>Uploaded Excel Files</h2>
+      <h2>Uploaded Contacts Files</h2>
       <p class="small">
-        Open any Excel to view preview and edit details on a dedicated page.
+        Open any file to view preview and edit details on a dedicated page.
       </p>
       <label>
-        Upload New Excel (Optional)
+        Upload New Contacts File (Optional)
         <input
           type="file"
           name="contacts_file"
           id="contacts-file-input"
-          accept=".xlsx,.xlsm,.xltx,.xltm"
+          accept=".xlsx,.xlsm,.xltx,.xltm,.csv"
           form="send-form"
         >
       </label>
+      <p class="small">Selecting a file saves it immediately to your uploaded files list.</p>
       <ul id="history-list" class="history-list">
         {% if uploaded_excel_files %}
           {% for file in uploaded_excel_files %}
@@ -34,7 +35,7 @@
             </li>
           {% endfor %}
         {% else %}
-          <li class="history-empty">No Excel files uploaded yet.</li>
+          <li class="history-empty">No contacts files uploaded yet.</li>
         {% endif %}
       </ul>
     </aside>
@@ -73,7 +74,7 @@
         </label>
 
         <p class="small">
-          Use Excel variables inside message like <code>{% raw %}{{name}}{% endraw %}</code> or <code>{% raw %}{{password}}{% endraw %}</code>.
+          Use contacts variables inside message like <code>{% raw %}{{name}}{% endraw %}</code> or <code>{% raw %}{{password}}{% endraw %}</code>.
         </p>
 
         <label>
@@ -82,9 +83,9 @@
         </label>
 
         <label>
-          Select Existing Excel (Optional)
+          Select Existing Contacts File (Optional)
           <select name="existing_contacts_file" id="existing-contacts-select">
-            <option value="">-- Select saved Excel file --</option>
+            <option value="">-- Select saved contacts file --</option>
             {% for file in uploaded_excel_files %}
               <option value="{{ file.name }}" {% if selected_existing_contacts_file == file.name %}selected{% endif %}>
                 {{ file.display_name }} ({{ file.modified_at }})
@@ -94,10 +95,10 @@
         </label>
 
         <p class="small">
-          If both are provided, uploaded Excel is used and also saved in history.
+          If both are provided, uploaded file is used and also saved in history.
         </p>
         <p class="small">
-          Excel must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
+          Contacts file (.xlsx or .csv) must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
         </p>
 
         <button id="send-button" type="submit">Send</button>

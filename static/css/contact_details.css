@@ -111,6 +111,17 @@ h1 {
   gap: 10px;
 }
 
+.table-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.table-toolbar button {
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
 label {
   font-size: 0.92rem;
   font-weight: 600;
@@ -177,7 +188,7 @@ button:disabled {
 .preview-table th,
 .preview-table td {
   border: 1px solid #e5e7eb;
-  padding: 6px 8px;
+  padding: 4px;
   text-align: left;
   vertical-align: top;
   min-width: 120px;
@@ -190,6 +201,22 @@ button:disabled {
   position: sticky;
   top: 0;
   z-index: 1;
+}
+
+.table-input {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.83rem;
+  padding: 6px 7px;
+  color: var(--text);
+  background: #fff;
+}
+
+.header-input[data-locked="1"] {
+  background: #f3f4f6;
+  color: #111827;
+  font-weight: 700;
 }
 
 @media (max-width: 640px) {

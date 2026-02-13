@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Excel Details</title>
+  <title>Contacts File Details</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/contact_details.css') }}">
 </head>
 <body>
@@ -13,18 +13,18 @@
     data-file-name="{{ contact_file.name if contact_file else '' }}"
   >
     <header class="header">
-      <h1>Excel Details</h1>
+      <h1>Contacts File Details</h1>
       {% if contact_file %}
         <p class="hint">
-          Review this file and edit its name/description.
+          Review this file and edit its name, description, columns, and rows.
         </p>
       {% else %}
-        <p class="hint">Could not load this Excel file.</p>
+        <p class="hint">Could not load this contacts file.</p>
       {% endif %}
       <div class="actions">
         <a class="link-btn" href="/">Back to Sender</a>
         {% if contact_file %}
-          <a class="link-btn" href="/?existing_contacts_file={{ contact_file.name|urlencode }}">Use This Excel in Sender</a>
+          <a class="link-btn" href="/?existing_contacts_file={{ contact_file.name|urlencode }}">Use This File in Sender</a>
         {% endif %}
       </div>
     </header>
@@ -45,7 +45,7 @@
 
         <div class="row">
           <label>
-            Excel Name
+            File Name
             <input id="display-name" type="text" maxlength="120" value="{{ contact_file.display_name }}">
           </label>
           <label>
@@ -53,29 +53,47 @@
             <textarea id="description" maxlength="500">{{ contact_file.description }}</textarea>
           </label>
           <div>
-            <button id="save-btn" type="button">Save Details</button>
+            <button id="save-meta-btn" type="button">Save Details</button>
           </div>
         </div>
 
         <p class="small">
-          Preview showing {{ preview.displayed_rows }} row(s){% if preview.total_rows %} out of {{ preview.total_rows }}{% endif %}{% if preview.truncated %} (limited){% endif %}.
+          Table rows: {{ preview.total_rows }}. Columns: {{ preview.total_columns }}.
         </p>
 
         {% if preview.headers %}
+          <p class="small">
+            You can edit cell values and most column names. The main <strong>NUMBERS</strong> column name is locked.
+          </p>
+          <div class="table-toolbar">
+            <button id="add-row-btn" type="button">Add Row</button>
+            <button id="add-col-btn" type="button">Add Column</button>
+            <button id="save-content-btn" type="button">Save File Content</button>
+          </div>
+
           <div class="preview-wrap">
-            <table class="preview-table">
-              <thead>
-                <tr>
+            <table class="preview-table" id="editable-table">
+              <thead id="editable-head">
+                <tr id="editable-head-row">
                   {% for header in preview.headers %}
-                    <th>{{ header }}</th>
+                    <th>
+                      <input
+                        type="text"
+                        class="table-input header-input"
+                        value="{{ header }}"
+                        {% if header|upper == "NUMBERS" %}data-locked="1" readonly{% endif %}
+                      >
+                    </th>
                   {% endfor %}
                 </tr>
               </thead>
-              <tbody>
+              <tbody id="editable-body">
                 {% for row in preview.rows %}
                   <tr>
                     {% for cell in row %}
-                      <td>{{ cell }}</td>
+                      <td>
+                        <input type="text" class="table-input cell-input" value="{{ cell }}">
+                      </td>
                     {% endfor %}
                   </tr>
                 {% endfor %}
@@ -83,7 +101,20 @@
             </table>
           </div>
         {% else %}
-          <p class="small">No preview data available for this file.</p>
+          <p class="small">No columns found. Add a column and save.</p>
+          <div class="table-toolbar">
+            <button id="add-row-btn" type="button">Add Row</button>
+            <button id="add-col-btn" type="button">Add Column</button>
+            <button id="save-content-btn" type="button">Save File Content</button>
+          </div>
+          <div class="preview-wrap">
+            <table class="preview-table" id="editable-table">
+              <thead id="editable-head">
+                <tr id="editable-head-row"></tr>
+              </thead>
+              <tbody id="editable-body"></tbody>
+            </table>
+          </div>
         {% endif %}
       {% endif %}
     </section>

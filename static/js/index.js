@@ -17,6 +17,12 @@
   const messageInput = document.getElementById('message-input');
   const historyList = document.getElementById('history-list');
   const defaultMessageTemplate = messageInput.value;
+  let isUploadingContacts = false;
+  let isSending = false;
+
+  function updateSendButtonState() {
+    sendButton.disabled = isUploadingContacts || isSending;
+  }
 
   function setBanner(ok, message) {
     statusBox.className = `status ${ok ? 'ok' : 'error'}`;
@@ -79,22 +85,25 @@
       AUTH_STATUS_FAILED: 'Could not read WhatsApp login status. Please retry.',
       MEDIA_TOO_LARGE: 'The selected media is too large. Choose a smaller file.',
       MISSING_CONTENT: 'Write a message or choose a media file.',
-      MISSING_TARGET: 'Enter a phone number, upload an Excel file, or select an existing Excel file.',
+      MISSING_TARGET: 'Enter a phone number, upload a contacts file, or select an existing contacts file.',
       VALIDATION_ERROR: fallbackMessage || 'Please check your input and try again.',
-      INVALID_CONTACTS_FILE: 'Upload a valid Excel file (.xlsx).',
-      CONTACTS_SAVE_FAILED: 'Could not save uploaded Excel file. Check disk space and try again.',
-      CONTACTS_METADATA_SAVE_FAILED: 'Could not save Excel details. Try again.',
-      CONTACT_FILE_NOT_FOUND: 'The selected Excel file was not found.',
-      CONTACTS_PREVIEW_FAILED: 'Could not read this Excel file.',
-      INVALID_CONTACT_METADATA: 'Excel name cannot be empty.',
-      INVALID_CONTACT_REFERENCE: 'Invalid Excel file reference.',
-      EXCEL_PARSE_ERROR: 'Could not read the Excel file. Please check the format and try again.',
-      EXCEL_EMPTY: 'Excel file is empty.',
-      EXCEL_MISSING_NUMBERS: 'Excel file must contain a "NUMBERS" column in the first row.',
-      EXCEL_NO_ROWS: 'No valid rows were found in Excel. Make sure NUMBERS has values.',
-      MISSING_TEMPLATE_VARIABLE: 'One or more {{variables}} are missing from Excel columns.',
+      INVALID_CONTACTS_FILE: 'Upload a valid contacts file (.xlsx or .csv).',
+      CONTACTS_UPLOAD_MISSING: 'Choose a contacts file to upload.',
+      CONTACTS_SAVE_FAILED: 'Could not save uploaded contacts file. Check disk space and try again.',
+      CONTACTS_METADATA_SAVE_FAILED: 'Could not save file details. Try again.',
+      CONTACT_FILE_NOT_FOUND: 'The selected contacts file was not found.',
+      CONTACTS_PREVIEW_FAILED: 'Could not read this contacts file.',
+      INVALID_CONTACT_METADATA: 'Contacts file name cannot be empty.',
+      INVALID_CONTACT_REFERENCE: 'Invalid contacts file reference.',
+      EXCEL_PARSE_ERROR: 'Could not read the contacts file. Please check the format and try again.',
+      EXCEL_EMPTY: 'Contacts file is empty.',
+      EXCEL_MISSING_NUMBERS: 'Contacts file must contain a "NUMBERS" column in the first row.',
+      EXCEL_NO_ROWS: 'No valid rows were found. Make sure NUMBERS has values.',
+      MISSING_TEMPLATE_VARIABLE: 'One or more {{variables}} are missing from contacts columns.',
+      INVALID_CONTACTS_CONTENT: 'Contacts file content is invalid. Check headers and rows.',
+      CONTACTS_CONTENT_SAVE_FAILED: 'Could not save contacts file content.',
       EMPTY_ROW_MESSAGE: 'A row produced an empty message after replacing variables.',
-      BATCH_ROW_FAILED: 'Failed while sending one of the Excel rows. Check your data and try again.',
+      BATCH_ROW_FAILED: 'Failed while sending one of the contacts rows. Check your data and try again.',
       LOGOUT_FAILED: 'Message was sent but automatic logout failed. Restart the app before next send.',
       BROWSER_NETWORK_ERROR: 'Cannot reach local app server. Make sure python main.py is still running.',
       INVALID_SERVER_RESPONSE: 'Server returned an invalid response. Try restarting the app.',
@@ -165,7 +174,7 @@
 
     const placeholderOption = document.createElement('option');
     placeholderOption.value = '';
-    placeholderOption.textContent = '-- Select saved Excel file --';
+    placeholderOption.textContent = '-- Select saved contacts file --';
     existingContactsSelect.appendChild(placeholderOption);
 
     historyList.innerHTML = '';
@@ -173,7 +182,7 @@
     if (!files || files.length === 0) {
       const emptyItem = document.createElement('li');
       emptyItem.className = 'history-empty';
-      emptyItem.textContent = 'No Excel files uploaded yet.';
+      emptyItem.textContent = 'No contacts files uploaded yet.';
       historyList.appendChild(emptyItem);
       return;
     }
@@ -184,7 +193,7 @@
 
       const name = document.createElement('div');
       name.className = 'history-name';
-      name.textContent = file.display_name || file.name || 'contacts.xlsx';
+      name.textContent = file.display_name || file.name || 'contacts-file';
 
       const desc = document.createElement('div');
       desc.className = 'history-desc';
@@ -278,11 +287,61 @@
     });
   }
 
+  async function uploadContactsFile(file) {
+    const formData = new FormData();
+    formData.append('contacts_file', file);
+    return fetchJson('/api/contacts/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
   closeModalButton.addEventListener('click', closeModal);
+
+  contactsFileInput.addEventListener('change', async () => {
+    const file = contactsFileInput.files && contactsFileInput.files[0];
+    if (!file) {
+      return;
+    }
+
+    isUploadingContacts = true;
+    updateSendButtonState();
+    setBanner(true, `Saving contacts file: ${file.name}...`);
+
+    try {
+      const result = await uploadContactsFile(file);
+      await refreshContactsHistory();
+
+      const savedName = result && result.file ? result.file.name : '';
+      if (savedName) {
+        existingContactsSelect.value = savedName;
+      }
+
+      const savedLabel =
+        result && result.file
+          ? result.file.display_name || result.file.name || file.name
+          : file.name;
+      setBanner(true, `Contacts file saved: ${savedLabel}. You can send now or later.`);
+    } catch (err) {
+      const message = err && err.message ? err.message : 'Could not upload contacts file.';
+      setBanner(false, message);
+    } finally {
+      contactsFileInput.value = '';
+      isUploadingContacts = false;
+      updateSendButtonState();
+    }
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     statusBox.classList.add('hidden');
+
+    if (isUploadingContacts) {
+      const message = 'Contacts file is still uploading. Wait a moment, then press Send.';
+      setResultMessage(message);
+      setBanner(false, message);
+      return;
+    }
 
     const hasPhone = Boolean(phoneInput.value.trim());
     const hasExcelUpload = Boolean(contactsFileInput.files && contactsFileInput.files.length > 0);
@@ -294,7 +353,8 @@
       return;
     }
 
-    sendButton.disabled = true;
+    isSending = true;
+    updateSendButtonState();
     openModal();
     setLoadingMessage('Preparing login...');
 
@@ -314,7 +374,8 @@
       setResultMessage(message);
       setBanner(false, message);
     } finally {
-      sendButton.disabled = false;
+      isSending = false;
+      updateSendButtonState();
     }
   });
 
