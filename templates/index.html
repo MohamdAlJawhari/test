@@ -265,8 +265,8 @@
         <input
           type="text"
           name="phone"
+          id="phone-input"
           placeholder="81744432 or 96181744432"
-          required
         >
       </label>
 
@@ -278,10 +278,22 @@
         ></textarea>
       </label>
 
+      <p class="small">
+        Use Excel variables inside message like <code>{% raw %}{{name}}{% endraw %}</code> or <code>{% raw %}{{password}}{% endraw %}</code>.
+      </p>
+
       <label>
         Media (Optional)
         <input type="file" name="media" accept="image/*,video/*,.pdf,.doc,.docx,.txt">
       </label>
+
+      <label>
+        Excel Contacts (Optional)
+        <input type="file" name="contacts_file" id="contacts-file-input" accept=".xlsx,.xlsm,.xltx,.xltm">
+      </label>
+      <p class="small">
+        If Excel is uploaded, it must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
+      </p>
 
       <button id="send-button" type="submit">Send</button>
     </form>
@@ -308,6 +320,8 @@
     const qrLoader = document.getElementById('qr-loader');
     const qrImage = document.getElementById('qr-image');
     const closeModalButton = document.getElementById('close-modal');
+    const phoneInput = document.getElementById('phone-input');
+    const contactsFileInput = document.getElementById('contacts-file-input');
 
     function setBanner(ok, message) {
       statusBox.className = `status ${ok ? 'ok' : 'error'}`;
@@ -366,7 +380,17 @@
         AUTH_STATUS_FAILED: 'Could not read WhatsApp login status. Please retry.',
         MEDIA_TOO_LARGE: 'The selected media is too large. Choose a smaller file.',
         MISSING_CONTENT: 'Write a message or choose a media file.',
+        MISSING_TARGET: 'Enter a phone number or upload an Excel file.',
         VALIDATION_ERROR: fallbackMessage || 'Please check your input and try again.',
+        INVALID_CONTACTS_FILE: 'Upload a valid Excel file (.xlsx).',
+        EXCEL_PARSE_ERROR: 'Could not read the Excel file. Please check the format and try again.',
+        EXCEL_EMPTY: 'Excel file is empty.',
+        EXCEL_MISSING_NUMBERS: 'Excel file must contain a "NUMBERS" column in the first row.',
+        EXCEL_NO_ROWS: 'No valid rows were found in Excel. Make sure NUMBERS has values.',
+        MISSING_TEMPLATE_VARIABLE: 'One or more {{variables}} are missing from Excel columns.',
+        EMPTY_ROW_MESSAGE: 'A row produced an empty message after replacing variables.',
+        BATCH_ROW_FAILED: 'Failed while sending one of the Excel rows. Check your data and try again.',
+        LOGOUT_FAILED: 'Message was sent but automatic logout failed. Restart the app before next send.',
         BROWSER_NETWORK_ERROR: 'Cannot reach local app server. Make sure python main.py is still running.',
         INVALID_SERVER_RESPONSE: 'Server returned an invalid response. Try restarting the app.',
         HTTP_413: 'The selected media is too large. Choose a smaller file.',
@@ -469,6 +493,16 @@
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       statusBox.classList.add('hidden');
+
+      const hasPhone = Boolean(phoneInput.value.trim());
+      const hasExcel = Boolean(contactsFileInput.files && contactsFileInput.files.length > 0);
+      if (!hasPhone && !hasExcel) {
+        const message = humanizeApiError('MISSING_TARGET');
+        setResultMessage(message);
+        setBanner(false, message);
+        return;
+      }
+
       sendButton.disabled = true;
       openModal();
       setLoadingMessage('Preparing login...');

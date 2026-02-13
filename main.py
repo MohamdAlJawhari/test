@@ -1,6 +1,8 @@
 import base64
+import io
 import mimetypes
 import os
+import re
 import atexit
 import socket
 import subprocess
@@ -11,11 +13,14 @@ from pathlib import Path
 
 import requests
 from flask import Flask, jsonify, render_template, request
+from openpyxl import load_workbook
 from requests import exceptions as requests_exceptions
 
 BASE_URL = "http://localhost:3000"
 DEFAULT_COUNTRY_CODE = os.getenv("DEFAULT_COUNTRY_CODE", "961")
 NODE_PROCESS = None
+PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
+BATCH_SEND_DELAY_SECONDS = float(os.getenv("BATCH_SEND_DELAY_SECONDS", "0.8"))
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
@@ -151,6 +156,126 @@ def upload_to_data_url(uploaded_file) -> str:
     return f"data:{mime_type};base64,{b64}"
 
 
+def _cell_to_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        text = format(value, "f")
+        return text.rstrip("0").rstrip(".")
+    return str(value).strip()
+
+
+def parse_excel_contacts(contacts_file) -> list[dict]:
+    filename = (contacts_file.filename or "").lower()
+    if not filename.endswith((".xlsx", ".xlsm", ".xltx", ".xltm")):
+        raise AppError(
+            code="INVALID_CONTACTS_FILE",
+            message="Upload a valid Excel .xlsx file.",
+            status=400,
+        )
+
+    try:
+        workbook = load_workbook(filename=io.BytesIO(contacts_file.read()), data_only=True)
+    except Exception as exc:
+        raise AppError(
+            code="EXCEL_PARSE_ERROR",
+            message="Could not read the Excel file. Please check the file format.",
+            status=400,
+            details=str(exc),
+        ) from exc
+
+    sheet = workbook.active
+    header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
+    if not header_row:
+        raise AppError(
+            code="EXCEL_EMPTY",
+            message="Excel file is empty.",
+            status=400,
+        )
+
+    headers = [_cell_to_text(cell).strip() for cell in header_row]
+    normalized_headers = [header.upper() for header in headers]
+
+    if "NUMBERS" not in normalized_headers:
+        raise AppError(
+            code="EXCEL_MISSING_NUMBERS",
+            message='Excel must contain a "NUMBERS" column in the first row.',
+            status=400,
+        )
+
+    number_col_idx = normalized_headers.index("NUMBERS")
+    rows: list[dict] = []
+
+    for row_idx, row_values in enumerate(
+        sheet.iter_rows(min_row=2, values_only=True), start=2
+    ):
+        if row_values is None:
+            continue
+
+        row_as_text = [_cell_to_text(cell) for cell in row_values]
+        if not any(cell.strip() for cell in row_as_text):
+            continue
+
+        number_value = row_as_text[number_col_idx] if number_col_idx < len(row_as_text) else ""
+        if not number_value.strip():
+            continue
+
+        row_map: dict[str, str] = {}
+        for col_idx, header in enumerate(headers):
+            header_name = header.strip()
+            if not header_name:
+                continue
+            value = row_as_text[col_idx] if col_idx < len(row_as_text) else ""
+            row_map[header_name] = value
+            row_map[header_name.upper()] = value
+
+        row_map["__row_index"] = str(row_idx)
+        rows.append(row_map)
+
+    if not rows:
+        raise AppError(
+            code="EXCEL_NO_ROWS",
+            message='No valid rows found in Excel. Ensure "NUMBERS" has values.',
+            status=400,
+        )
+
+    return rows
+
+
+def render_message_template(template: str, row_map: dict) -> str:
+    if not template:
+        return ""
+
+    lookup = {str(key).strip().lower(): str(value) for key, value in row_map.items()}
+    missing_keys: set[str] = set()
+
+    def replace(match: re.Match) -> str:
+        raw_key = match.group(1).strip()
+        key = raw_key.lower()
+        if key in lookup:
+            return lookup[key]
+        missing_keys.add(raw_key)
+        return match.group(0)
+
+    rendered = PLACEHOLDER_PATTERN.sub(replace, template)
+    if missing_keys:
+        row_ref = row_map.get("__row_index", "?")
+        raise AppError(
+            code="MISSING_TEMPLATE_VARIABLE",
+            message=f"Missing column(s) in Excel for placeholders: {', '.join(sorted(missing_keys))}.",
+            status=400,
+            details=f"Row {row_ref}",
+        )
+
+    return rendered
+
+
 def call_node_api(method: str, endpoint: str, payload: dict | None = None, timeout: int = 10) -> dict:
     method = method.upper().strip()
     url = f"{BASE_URL}{endpoint}"
@@ -213,15 +338,21 @@ def post_json(endpoint: str, payload: dict, timeout: int) -> dict:
     return data
 
 
-def send_text(to: str, message: str) -> None:
+def send_text(to: str, message: str, keep_session: bool = False) -> None:
     post_json(
         endpoint="/send-text",
-        payload={"to": to, "message": message},
+        payload={"to": to, "message": message, "keepSession": keep_session},
         timeout=10,
     )
 
 
-def send_media(to: str, filename: str, caption: str, data_url: str) -> None:
+def send_media(
+    to: str,
+    filename: str,
+    caption: str,
+    data_url: str,
+    keep_session: bool = False,
+) -> None:
     post_json(
         endpoint="/send-media",
         payload={
@@ -229,9 +360,21 @@ def send_media(to: str, filename: str, caption: str, data_url: str) -> None:
             "filename": filename,
             "caption": caption,
             "base64": data_url,
+            "keepSession": keep_session,
         },
         timeout=120,
     )
+
+
+def logout_session() -> None:
+    data = call_node_api("POST", "/session/logout", payload={}, timeout=20)
+    if not data.get("ok"):
+        raise AppError(
+            code="LOGOUT_FAILED",
+            message="Failed to close WhatsApp session after sending.",
+            status=502,
+            details=data.get("error"),
+        )
 
 
 @app.get("/")
@@ -276,11 +419,19 @@ def api_send():
     phone = request.form.get("phone", "").strip()
     message = request.form.get("message", "").strip()
     uploaded_file = request.files.get("media")
+    contacts_file = request.files.get("contacts_file")
 
     try:
-        to = normalize_to_whatsapp_id(phone)
+        has_contacts_file = bool(contacts_file and contacts_file.filename)
         has_media = bool(uploaded_file and uploaded_file.filename)
         has_message = bool(message)
+
+        if not has_contacts_file and not phone:
+            raise AppError(
+                code="MISSING_TARGET",
+                message="Enter a phone number or upload an Excel file.",
+                status=400,
+            )
 
         if not has_message and not has_media:
             raise AppError(
@@ -289,6 +440,81 @@ def api_send():
                 status=400,
             )
 
+        if has_contacts_file:
+            rows = parse_excel_contacts(contacts_file)
+            media_data_url = upload_to_data_url(uploaded_file) if has_media else ""
+            media_filename = uploaded_file.filename if has_media else ""
+
+            try:
+                for index, row in enumerate(rows):
+                    row_number = row.get("NUMBERS", "")
+                    to = normalize_to_whatsapp_id(row_number)
+                    rendered_message = render_message_template(message, row).strip()
+                    keep_session = True
+
+                    if has_media:
+                        send_media(
+                            to=to,
+                            filename=media_filename,
+                            caption=rendered_message,
+                            data_url=media_data_url,
+                            keep_session=keep_session,
+                        )
+                    else:
+                        if not rendered_message:
+                            raise AppError(
+                                code="EMPTY_ROW_MESSAGE",
+                                message="Message is empty for one or more rows after variable replacement.",
+                                status=400,
+                                details=f"Row {row.get('__row_index', '?')}",
+                            )
+                        send_text(to=to, message=rendered_message, keep_session=keep_session)
+
+                    if index < len(rows) - 1 and BATCH_SEND_DELAY_SECONDS > 0:
+                        time.sleep(BATCH_SEND_DELAY_SECONDS)
+            except AppError:
+                try:
+                    logout_session()
+                except Exception:
+                    pass
+                raise
+            except Exception as exc:
+                try:
+                    logout_session()
+                except Exception:
+                    pass
+                raise AppError(
+                    code="BATCH_ROW_FAILED",
+                    message="Failed while sending one of the Excel rows.",
+                    status=502,
+                    details=str(exc),
+                ) from exc
+
+            logout_warning = None
+            try:
+                logout_session()
+            except Exception as exc:
+                logout_warning = str(exc)
+
+            result_message = (
+                f"Batch sent successfully to {len(rows)} row(s). "
+                "You are logged out; a new QR code will be required next send."
+            )
+            if logout_warning:
+                result_message = (
+                    f"Batch sent successfully to {len(rows)} row(s), but automatic logout failed. "
+                    "Restart the app before the next batch."
+                )
+
+            return jsonify(
+                {
+                    "ok": True,
+                    "message": result_message,
+                }
+            )
+
+        to = normalize_to_whatsapp_id(phone)
+
         if has_media:
             data_url = upload_to_data_url(uploaded_file)
             send_media(
@@ -296,6 +522,7 @@ def api_send():
                 filename=uploaded_file.filename,
                 caption=message,
                 data_url=data_url,
+                keep_session=False,
             )
             return jsonify(
                 {
@@ -304,7 +531,7 @@ def api_send():
                 }
             )
 
-        send_text(to=to, message=message)
+        send_text(to=to, message=message, keep_session=False)
         return jsonify(
             {
                 "ok": True,

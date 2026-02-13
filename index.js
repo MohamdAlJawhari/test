@@ -88,6 +88,19 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function asBoolean(value) {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return ['1', 'true', 'yes', 'on'].includes(normalized);
+  }
+
+  return Boolean(value);
+}
+
 function parseSerializedMessageId(value) {
   if (typeof value !== 'string' || !value) {
     return {};
@@ -230,9 +243,19 @@ async function readMessageAck(targetKey) {
   return null;
 }
 
-async function waitForMessageAck(messageId, minAck = MIN_ACK_TO_LOGOUT, recipient = '') {
+async function waitForMessageAck(
+  messageId,
+  minAck = MIN_ACK_TO_LOGOUT,
+  recipient = '',
+  options = {}
+) {
+  const signal = options?.signal;
   if (!clientInstance) {
     return { status: 'skipped' };
+  }
+
+  if (signal?.aborted) {
+    return { status: 'aborted' };
   }
 
   const targetKey = parseMessageKey(messageId);
@@ -258,6 +281,7 @@ async function waitForMessageAck(messageId, minAck = MIN_ACK_TO_LOGOUT, recipien
   const waitOutcome = await new Promise((resolve, reject) => {
     let settled = false;
     let disposable = null;
+    let abortHandler = null;
 
     const finish = (result, error = null) => {
       if (settled) {
@@ -267,6 +291,10 @@ async function waitForMessageAck(messageId, minAck = MIN_ACK_TO_LOGOUT, recipien
 
       if (disposable && typeof disposable.dispose === 'function') {
         disposable.dispose();
+      }
+
+      if (signal && abortHandler) {
+        signal.removeEventListener('abort', abortHandler);
       }
 
       clearTimeout(timeoutHandle);
@@ -287,6 +315,11 @@ async function waitForMessageAck(messageId, minAck = MIN_ACK_TO_LOGOUT, recipien
         null,
         new Error('ACK listener is not available in this WPPConnect version.')
       );
+    }
+
+    if (signal) {
+      abortHandler = () => finish({ status: 'aborted' });
+      signal.addEventListener('abort', abortHandler, { once: true });
     }
 
     disposable = clientInstance.onAck((ackPayload) => {
@@ -317,6 +350,10 @@ async function waitForMessageAck(messageId, minAck = MIN_ACK_TO_LOGOUT, recipien
   });
 
   if (waitOutcome.status === 'ack') {
+    return waitOutcome;
+  }
+
+  if (waitOutcome.status === 'aborted') {
     return waitOutcome;
   }
 
@@ -507,7 +544,8 @@ app.get('/auth/status', (_req, res) => {
 // 1) Send TEXT endpoint
 // ============================
 app.post('/send-text', ensureClient, async (req, res) => {
-  const { to, message } = req.body;
+  const { to, message, keepSession } = req.body;
+  const keepSessionEnabled = asBoolean(keepSession);
 
   if (!to || !message) {
     return res.status(400).json({
@@ -518,30 +556,41 @@ app.post('/send-text', ensureClient, async (req, res) => {
 
   try {
     const sent = await clientInstance.sendText(to, message);
-    const ackProbe = waitForMessageAck(sent?.id, MIN_ACK_TO_LOGOUT, to);
-    let ackResult = { status: 'ui_cap' };
+    let ackResult = { status: 'skipped_keep_session' };
 
-    try {
-      ackResult = await Promise.race([
-        ackProbe,
-        sleep(ACK_UI_WAIT_CAP_MS).then(() => ({ status: 'ui_cap' })),
-      ]);
-    } catch (err) {
-      // Hard ACK errors still fail this request.
-      throw err;
-    }
-
-    if (ackResult.status === 'ui_cap') {
-      console.warn(
-        `ACK wait exceeded UI cap (${ACK_UI_WAIT_CAP_MS}ms) for text to ${to}; continuing.`
+    if (!keepSessionEnabled) {
+      const ackController = new AbortController();
+      const ackProbe = waitForMessageAck(
+        sent?.id,
+        MIN_ACK_TO_LOGOUT,
+        to,
+        { signal: ackController.signal }
       );
-    } else if (ackResult.status === 'timeout') {
-      console.warn(
-        `ACK timeout for text to ${to}; continuing logout (last ACK: ${ackResult.lastAck ?? 'unknown'})`
-      );
-    }
+      ackResult = { status: 'ui_cap' };
 
-    await logoutAndReset();
+      try {
+        ackResult = await Promise.race([
+          ackProbe,
+          sleep(ACK_UI_WAIT_CAP_MS).then(() => ({ status: 'ui_cap' })),
+        ]);
+      } catch (err) {
+        // Hard ACK errors still fail this request.
+        throw err;
+      }
+
+      if (ackResult.status === 'ui_cap') {
+        ackController.abort();
+        console.warn(
+          `ACK wait exceeded UI cap (${ACK_UI_WAIT_CAP_MS}ms) for text to ${to}; continuing.`
+        );
+      } else if (ackResult.status === 'timeout') {
+        console.warn(
+          `ACK timeout for text to ${to}; continuing logout (last ACK: ${ackResult.lastAck ?? 'unknown'})`
+        );
+      }
+
+      await logoutAndReset();
+    }
     console.log(`Text sent to ${to}: ${message}`);
     res.json({ ok: true, ackStatus: ackResult.status });
   } catch (e) {
@@ -556,7 +605,8 @@ app.post('/send-text', ensureClient, async (req, res) => {
 // Expect: { to, filename, caption, base64 }
 // base64 MUST look like: "data:video/mp4;base64,AAAA..."
 app.post('/send-media', ensureClient, async (req, res) => {
-  const { to, filename, caption, base64 } = req.body;
+  const { to, filename, caption, base64, keepSession } = req.body;
+  const keepSessionEnabled = asBoolean(keepSession);
 
   if (!to || !base64) {
     return res.status(400).json({
@@ -576,35 +626,56 @@ app.post('/send-media', ensureClient, async (req, res) => {
         waitForAck: true,
       }
     );
-    const ackProbe = waitForMessageAck(sent?.id, MIN_ACK_TO_LOGOUT, to);
-    let ackResult = { status: 'ui_cap' };
+    let ackResult = { status: 'skipped_keep_session' };
 
-    try {
-      ackResult = await Promise.race([
-        ackProbe,
-        sleep(ACK_UI_WAIT_CAP_MS).then(() => ({ status: 'ui_cap' })),
-      ]);
-    } catch (err) {
-      // Hard ACK errors still fail this request.
-      throw err;
-    }
-
-    if (ackResult.status === 'ui_cap') {
-      console.warn(
-        `ACK wait exceeded UI cap (${ACK_UI_WAIT_CAP_MS}ms) for media to ${to}; continuing.`
+    if (!keepSessionEnabled) {
+      const ackController = new AbortController();
+      const ackProbe = waitForMessageAck(
+        sent?.id,
+        MIN_ACK_TO_LOGOUT,
+        to,
+        { signal: ackController.signal }
       );
-    } else if (ackResult.status === 'timeout') {
-      console.warn(
-        `ACK timeout for media to ${to}; continuing logout (last ACK: ${ackResult.lastAck ?? 'unknown'})`
-      );
-    }
+      ackResult = { status: 'ui_cap' };
 
-    await logoutAndReset();
+      try {
+        ackResult = await Promise.race([
+          ackProbe,
+          sleep(ACK_UI_WAIT_CAP_MS).then(() => ({ status: 'ui_cap' })),
+        ]);
+      } catch (err) {
+        // Hard ACK errors still fail this request.
+        throw err;
+      }
+
+      if (ackResult.status === 'ui_cap') {
+        ackController.abort();
+        console.warn(
+          `ACK wait exceeded UI cap (${ACK_UI_WAIT_CAP_MS}ms) for media to ${to}; continuing.`
+        );
+      } else if (ackResult.status === 'timeout') {
+        console.warn(
+          `ACK timeout for media to ${to}; continuing logout (last ACK: ${ackResult.lastAck ?? 'unknown'})`
+        );
+      }
+
+      await logoutAndReset();
+    }
     console.log(`Media sent to ${to}: ${filename || 'file'}`);
     res.json({ ok: true, ackStatus: ackResult.status });
   } catch (e) {
     console.error('Error sending media:', e);
     res.status(500).json({ ok: false, error: e.toString() });
+  }
+});
+
+app.post('/session/logout', async (_req, res) => {
+  try {
+    await logoutAndReset();
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error('Error in session logout:', e);
+    return res.status(500).json({ ok: false, error: e.toString() });
   }
 });
 
