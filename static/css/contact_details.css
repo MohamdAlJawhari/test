@@ -218,6 +218,51 @@ button:disabled {
   z-index: 1;
 }
 
+.header-cell-wrap {
+  display: grid;
+  gap: 4px;
+}
+
+.row-actions-head {
+  min-width: 64px !important;
+  max-width: 64px !important;
+  text-align: center !important;
+}
+
+.row-actions-cell {
+  min-width: 64px !important;
+  max-width: 64px !important;
+  background: #f9fafb;
+}
+
+.cell-controls {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+}
+
+.col-controls {
+  justify-content: flex-end;
+}
+
+.mini-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.mini-btn:hover {
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
 .table-input {
   width: 100%;
   border: 1px solid #d1d5db;

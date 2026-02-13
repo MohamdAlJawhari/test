@@ -8,8 +8,6 @@
   const statusBox = document.getElementById('details-status');
   const saveMetaButton = document.getElementById('save-meta-btn');
   const saveContentButton = document.getElementById('save-content-btn');
-  const addRowButton = document.getElementById('add-row-btn');
-  const addColButton = document.getElementById('add-col-btn');
   const deleteFileButton = document.getElementById('delete-file-btn');
   const displayNameInput = document.getElementById('display-name');
   const descriptionInput = document.getElementById('description');
@@ -33,16 +31,52 @@
     statusBox.textContent = message;
   }
 
+  function getDataHeaderCells() {
+    return Array.from(headerRow.querySelectorAll('th.data-header-cell'));
+  }
+
   function getHeaderInputs() {
-    return Array.from(headerRow.querySelectorAll('input.header-input'));
+    return getDataHeaderCells()
+      .map((th) => th.querySelector('input.header-input'))
+      .filter(Boolean);
   }
 
   function getColumnCount() {
     return getHeaderInputs().length;
   }
 
+  function nextColumnLabel() {
+    const usedNames = new Set(
+      getHeaderInputs().map((input) => input.value.trim().toUpperCase())
+    );
+    let index = getColumnCount() + 1;
+    let label = `Column ${index}`;
+    while (usedNames.has(label.toUpperCase())) {
+      index += 1;
+      label = `Column ${index}`;
+    }
+    return label;
+  }
+
+  function createMiniButton(type, action, text, title) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = `mini-btn ${type}`;
+    button.dataset.action = action;
+    button.textContent = text;
+    button.title = title;
+    return button;
+  }
+
   function createHeaderCell(value = '', locked = false) {
     const th = document.createElement('th');
+    th.className = 'data-header-cell';
+
+    const controls = document.createElement('div');
+    controls.className = 'cell-controls col-controls';
+    controls.appendChild(createMiniButton('col-action', 'remove-col', '-', 'Remove this column'));
+    controls.appendChild(createMiniButton('col-action', 'insert-col', '+', 'Insert column to the right'));
+
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'table-input header-input';
@@ -52,8 +86,27 @@
       input.readOnly = true;
       input.value = 'NUMBERS';
     }
-    th.appendChild(input);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'header-cell-wrap';
+    wrapper.appendChild(controls);
+    wrapper.appendChild(input);
+
+    th.appendChild(wrapper);
     return th;
+  }
+
+  function createRowActionsCell() {
+    const td = document.createElement('td');
+    td.className = 'row-actions-cell';
+
+    const controls = document.createElement('div');
+    controls.className = 'cell-controls row-controls';
+    controls.appendChild(createMiniButton('row-action', 'remove-row', '-', 'Remove this row'));
+    controls.appendChild(createMiniButton('row-action', 'insert-row', '+', 'Insert row below'));
+
+    td.appendChild(controls);
+    return td;
   }
 
   function createBodyCell(value = '') {
@@ -66,57 +119,155 @@
     return td;
   }
 
-  function rebuildTableFromPreview(preview) {
-    const headers = Array.isArray(preview?.headers) ? preview.headers : [];
-    const rows = Array.isArray(preview?.rows) ? preview.rows : [];
-
-    headerRow.innerHTML = '';
-    body.innerHTML = '';
-
-    for (const header of headers) {
-      const normalized = String(header || '').trim().toUpperCase();
-      headerRow.appendChild(createHeaderCell(header, normalized === 'NUMBERS'));
-    }
-
-    for (const rowValues of rows) {
-      addRow(Array.isArray(rowValues) ? rowValues : []);
-    }
+  function refreshControlIndices() {
+    getDataHeaderCells().forEach((th, index) => {
+      th.dataset.colIndex = String(index);
+    });
+    Array.from(body.querySelectorAll('tr')).forEach((tr, index) => {
+      tr.dataset.rowIndex = String(index);
+    });
   }
 
-  function addRow(initialValues = []) {
+  function addRowAt(index, initialValues = []) {
     const cols = getColumnCount();
     if (cols === 0) {
       setStatus(false, 'Add at least one column first.');
-      return;
+      return false;
     }
 
     const tr = document.createElement('tr');
+    tr.appendChild(createRowActionsCell());
     for (let col = 0; col < cols; col += 1) {
       tr.appendChild(createBodyCell(initialValues[col] || ''));
     }
-    body.appendChild(tr);
-  }
-
-  function addColumn(initialHeader = '') {
-    const nextColNumber = getColumnCount() + 1;
-    const headerText = initialHeader || `Column ${nextColNumber}`;
-    headerRow.appendChild(createHeaderCell(headerText, false));
 
     const rows = Array.from(body.querySelectorAll('tr'));
-    for (const row of rows) {
-      row.appendChild(createBodyCell(''));
+    const boundedIndex = Math.max(0, Math.min(index, rows.length));
+    if (boundedIndex >= rows.length) {
+      body.appendChild(tr);
+    } else {
+      body.insertBefore(tr, rows[boundedIndex]);
     }
+
+    refreshControlIndices();
+    return true;
+  }
+
+  function removeRowAt(index) {
+    const rows = Array.from(body.querySelectorAll('tr'));
+    if (!rows.length || index < 0 || index >= rows.length) {
+      return;
+    }
+
+    if (rows.length <= 1) {
+      setStatus(false, 'At least one row should remain. Clear its values if needed.');
+      return;
+    }
+
+    rows[index].remove();
+    refreshControlIndices();
+  }
+
+  function addColumnAt(index, initialHeader = '', locked = false) {
+    const dataHeaderCells = getDataHeaderCells();
+    const boundedIndex = Math.max(0, Math.min(index, dataHeaderCells.length));
+    const headerText = initialHeader || nextColumnLabel();
+    const normalized = String(headerText).trim().toUpperCase();
+    const headerCell = createHeaderCell(headerText, locked || normalized === 'NUMBERS');
+
+    if (boundedIndex >= dataHeaderCells.length) {
+      headerRow.appendChild(headerCell);
+    } else {
+      headerRow.insertBefore(headerCell, dataHeaderCells[boundedIndex]);
+    }
+
+    Array.from(body.querySelectorAll('tr')).forEach((row) => {
+      const cell = createBodyCell('');
+      const insertBeforeCell = row.children[boundedIndex + 1] || null;
+      row.insertBefore(cell, insertBeforeCell);
+    });
+
+    refreshControlIndices();
+  }
+
+  function removeColumnAt(index) {
+    const dataHeaderCells = getDataHeaderCells();
+    if (!dataHeaderCells.length || index < 0 || index >= dataHeaderCells.length) {
+      return;
+    }
+
+    if (dataHeaderCells.length <= 1) {
+      setStatus(false, 'At least one column should remain.');
+      return;
+    }
+
+    const targetHeader = dataHeaderCells[index];
+    const input = targetHeader.querySelector('input.header-input');
+    if (input && input.dataset.locked === '1') {
+      setStatus(false, 'The "NUMBERS" column cannot be removed.');
+      return;
+    }
+
+    targetHeader.remove();
+    Array.from(body.querySelectorAll('tr')).forEach((row) => {
+      const targetCell = row.children[index + 1];
+      if (targetCell) {
+        targetCell.remove();
+      }
+    });
+
+    refreshControlIndices();
   }
 
   function collectTableData() {
     const headerInputs = getHeaderInputs();
     const headers = headerInputs.map((input) => input.value.trim());
     const rows = Array.from(body.querySelectorAll('tr')).map((rowEl) =>
-      Array.from(rowEl.querySelectorAll('input.cell-input')).map((input) =>
-        input.value
-      )
+      Array.from(rowEl.querySelectorAll('input.cell-input')).map((input) => input.value)
     );
     return { headers, rows };
+  }
+
+  function readPreviewFromDom() {
+    const headers = Array.from(headerRow.querySelectorAll('input.header-input')).map(
+      (input) => input.value
+    );
+    const rows = Array.from(body.querySelectorAll('tr')).map((rowEl) =>
+      Array.from(rowEl.querySelectorAll('input.cell-input')).map((input) => input.value)
+    );
+    return { headers, rows };
+  }
+
+  function rebuildTableFromPreview(preview) {
+    const sourceHeaders = Array.isArray(preview?.headers) ? preview.headers : [];
+    const sourceRows = Array.isArray(preview?.rows) ? preview.rows : [];
+    const headers = sourceHeaders.length ? sourceHeaders : ['NUMBERS'];
+    const rows = sourceRows.length ? sourceRows : [new Array(headers.length).fill('')];
+
+    headerRow.innerHTML = '';
+    body.innerHTML = '';
+
+    const rowActionsHeader = document.createElement('th');
+    rowActionsHeader.className = 'row-actions-head';
+    rowActionsHeader.textContent = 'Row';
+    headerRow.appendChild(rowActionsHeader);
+
+    headers.forEach((headerText) => {
+      const normalized = String(headerText || '').trim().toUpperCase();
+      headerRow.appendChild(createHeaderCell(headerText, normalized === 'NUMBERS'));
+    });
+
+    rows.forEach((rowValues) => {
+      const tr = document.createElement('tr');
+      tr.appendChild(createRowActionsCell());
+      for (let col = 0; col < headers.length; col += 1) {
+        const value = Array.isArray(rowValues) ? rowValues[col] || '' : '';
+        tr.appendChild(createBodyCell(value));
+      }
+      body.appendChild(tr);
+    });
+
+    refreshControlIndices();
   }
 
   function validateHeaders(headers) {
@@ -289,20 +440,66 @@
     }
   }
 
+  headerRow.addEventListener('click', (event) => {
+    const button = event.target.closest('button.col-action');
+    if (!button) {
+      return;
+    }
+
+    const headerCell = button.closest('th.data-header-cell');
+    if (!headerCell) {
+      return;
+    }
+
+    const colIndex = Number(headerCell.dataset.colIndex);
+    if (!Number.isInteger(colIndex)) {
+      return;
+    }
+
+    if (button.dataset.action === 'insert-col') {
+      addColumnAt(colIndex + 1);
+      return;
+    }
+
+    if (button.dataset.action === 'remove-col') {
+      removeColumnAt(colIndex);
+    }
+  });
+
+  body.addEventListener('click', (event) => {
+    const button = event.target.closest('button.row-action');
+    if (!button) {
+      return;
+    }
+
+    const row = button.closest('tr');
+    if (!row) {
+      return;
+    }
+
+    const rowIndex = Number(row.dataset.rowIndex);
+    if (!Number.isInteger(rowIndex)) {
+      return;
+    }
+
+    if (button.dataset.action === 'insert-row') {
+      addRowAt(rowIndex + 1);
+      return;
+    }
+
+    if (button.dataset.action === 'remove-row') {
+      removeRowAt(rowIndex);
+    }
+  });
+
+  rebuildTableFromPreview(readPreviewFromDom());
+
   if (saveMetaButton) {
     saveMetaButton.addEventListener('click', saveMetadata);
   }
 
   if (saveContentButton) {
     saveContentButton.addEventListener('click', saveContent);
-  }
-
-  if (addRowButton) {
-    addRowButton.addEventListener('click', () => addRow());
-  }
-
-  if (addColButton) {
-    addColButton.addEventListener('click', () => addColumn());
   }
 
   if (deleteFileButton) {

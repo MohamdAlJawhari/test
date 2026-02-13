@@ -65,11 +65,10 @@
 
         {% if preview.headers %}
           <p class="small">
-            You can edit cell values and most column names. The main <strong>NUMBERS</strong> column name is locked.
+            Use the small <strong>[-]</strong> and <strong>[+]</strong> buttons inside each row and column to remove or insert exactly where you want.
+            The main <strong>NUMBERS</strong> column name is locked.
           </p>
           <div class="table-toolbar">
-            <button id="add-row-btn" type="button">Add Row</button>
-            <button id="add-col-btn" type="button">Add Column</button>
             <button id="save-content-btn" type="button">Save File Content</button>
           </div>
 
@@ -103,10 +102,11 @@
             </table>
           </div>
         {% else %}
-          <p class="small">No columns found. Add a column and save.</p>
+          <p class="small">
+            No columns found yet. A default <strong>NUMBERS</strong> column and an empty row will be prepared automatically.
+            Then use the small <strong>[-]</strong> and <strong>[+]</strong> buttons for row/column control.
+          </p>
           <div class="table-toolbar">
-            <button id="add-row-btn" type="button">Add Row</button>
-            <button id="add-col-btn" type="button">Add Column</button>
             <button id="save-content-btn" type="button">Save File Content</button>
           </div>
           <div class="preview-wrap">
