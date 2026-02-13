@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 const wppconnect = require('@wppconnect-team/wppconnect');
 const express = require('express');
 
@@ -64,6 +65,98 @@ function cleanupSessionTokens() {
   } catch (err) {
     console.warn('Could not clean session tokens:', err.toString());
   }
+}
+
+function isBrowserProfileLockedError(err) {
+  const text = String(err && err.message ? err.message : err || '').toLowerCase();
+  return (
+    text.includes('browser is already running') &&
+    text.includes('tokens') &&
+    text.includes(SESSION_NAME.toLowerCase())
+  );
+}
+
+function cleanupSessionLockFiles() {
+  const sessionPath = path.join(TOKEN_BASE_DIR, SESSION_NAME);
+  const lockFiles = [
+    path.join(sessionPath, 'SingletonLock'),
+    path.join(sessionPath, 'SingletonCookie'),
+    path.join(sessionPath, 'SingletonSocket'),
+    path.join(sessionPath, 'Default', 'SingletonLock'),
+    path.join(sessionPath, 'Default', 'SingletonCookie'),
+    path.join(sessionPath, 'Default', 'SingletonSocket'),
+  ];
+
+  for (const filePath of lockFiles) {
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.rmSync(filePath, { force: true });
+      }
+    } catch (err) {
+      console.warn(`Could not remove lock file ${filePath}:`, err.toString());
+    }
+  }
+}
+
+function runProcessCommand(command, args) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { windowsHide: true }, (error, stdout, stderr) => {
+      if (error) {
+        const details = stderr || stdout || error.message || '';
+        reject(new Error(details));
+        return;
+      }
+      resolve((stdout || '').trim());
+    });
+  });
+}
+
+async function killStaleSessionBrowsers() {
+  const sessionPath = path.join(TOKEN_BASE_DIR, SESSION_NAME);
+  if (process.platform !== 'win32') {
+    return 0;
+  }
+
+  const escapedPath = sessionPath.replace(/'/g, "''");
+  const script = [
+    `$sessionPath = '${escapedPath}'`,
+    "$killed = 0",
+    "$targets = Get-CimInstance Win32_Process | Where-Object {",
+    "  $_.CommandLine -and",
+    "  $_.CommandLine -like \"*${sessionPath}*\" -and",
+    "  ($_.Name -match 'chrome|msedge|chromium')",
+    "}",
+    "foreach ($p in $targets) {",
+    "  try {",
+    "    Stop-Process -Id $p.ProcessId -Force -ErrorAction Stop",
+    "    $killed++",
+    "  } catch {}",
+    "}",
+    "Write-Output $killed",
+  ].join('; ');
+
+  try {
+    const output = await runProcessCommand('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      script,
+    ]);
+    const killed = Number(output);
+    return Number.isFinite(killed) ? killed : 0;
+  } catch (err) {
+    console.warn('Could not terminate stale browser processes:', err.toString());
+    return 0;
+  }
+}
+
+async function recoverFromLockedBrowserProfile() {
+  const killedCount = await killStaleSessionBrowsers();
+  cleanupSessionLockFiles();
+  await sleep(700);
+  return killedCount;
 }
 
 function withTimeout(promise, timeoutMs, timeoutLabel) {
@@ -389,8 +482,7 @@ function initClientIfNeeded() {
 
   setAuthState('initializing', 'Starting WhatsApp client...');
 
-  initPromise = wppconnect
-    .create({
+  const createOptions = {
       session: SESSION_NAME,
       headless: true,
       logQR: false,
@@ -434,7 +526,33 @@ function initClientIfNeeded() {
           '--disable-gpu',
         ],
       },
-    })
+    };
+
+  const createClientWithRecovery = async () => {
+    try {
+      return await wppconnect.create(createOptions);
+    } catch (err) {
+      if (!isBrowserProfileLockedError(err)) {
+        throw err;
+      }
+
+      console.warn(
+        'Detected locked browser profile. Attempting one automatic recovery.'
+      );
+      setAuthState(
+        'initializing',
+        'Detected a locked browser profile. Recovering and retrying...'
+      );
+
+      const killedCount = await recoverFromLockedBrowserProfile();
+      console.log(
+        `Recovery cleanup finished (terminated ${killedCount} stale browser process(es)). Retrying startup.`
+      );
+      return wppconnect.create(createOptions);
+    }
+  };
+
+  initPromise = createClientWithRecovery()
     .then((client) => {
       clientInstance = client;
       setAuthState('authenticated', 'WhatsApp client is ready.');
