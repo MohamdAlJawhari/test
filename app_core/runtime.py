@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 
-
+# Core runtime utilities for managing the Node.js API process, checking port availability, and opening the browser.
 def is_port_available(port: int, host: str = "127.0.0.1") -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         try:
@@ -17,7 +17,7 @@ def is_port_available(port: int, host: str = "127.0.0.1") -> bool:
         except OSError:
             return False
 
-
+# find_available_port checks if the preferred port is available, and if not, it finds a random available port by binding to port 0.
 def find_available_port(preferred_port: int) -> int:
     if preferred_port > 0 and is_port_available(preferred_port):
         return preferred_port
@@ -26,7 +26,7 @@ def find_available_port(preferred_port: int) -> int:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
 
-
+# start_node_server starts the Node.js API server as a subprocess, passing the API port via environment variables, and returns the process handle for later management.
 def start_node_server(api_port: int, project_root: Path) -> subprocess.Popen:
     env = os.environ.copy()
     env["API_PORT"] = str(api_port)
@@ -44,7 +44,7 @@ def start_node_server(api_port: int, project_root: Path) -> subprocess.Popen:
 
     return process
 
-
+# stop_node_server safely terminates the Node.js API subprocess, first trying a graceful shutdown and then force-killing if it does not exit within a timeout.
 def stop_node_server(process: subprocess.Popen | None) -> None:
     if not process:
         return
@@ -85,7 +85,7 @@ def wait_for_node_ready(
         + (f" Last error: {last_error}" if last_error else "")
     )
 
-
+# open_browser_soon uses a background timer thread to open the default web browser to the specified URL after a short delay, allowing the server to start first.
 def open_browser_soon(url: str, delay_seconds: float = 0.8) -> None:
     timer = threading.Timer(delay_seconds, lambda: webbrowser.open(url))
     timer.daemon = True

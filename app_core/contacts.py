@@ -47,7 +47,7 @@ def sanitize_metadata_text(value, *, max_len: int) -> str:
         return text[:max_len]
     return text
 
-
+# The following functions handle loading, saving, and managing metadata for uploaded contacts files, as well as validating and parsing the content of those files for use in the application.
 def load_contacts_metadata() -> dict[str, dict]:
     if not CONTACTS_METADATA_FILE.exists():
         return {}
@@ -79,7 +79,7 @@ def load_contacts_metadata() -> dict[str, dict]:
 
     return normalized
 
-
+# When saving metadata, we ensure the directory exists and handle any file I/O errors by raising an AppError with details for debugging.
 def save_contacts_metadata(metadata: dict[str, dict]) -> None:
     CONTACTS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     try:
