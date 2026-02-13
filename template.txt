@@ -1,1 +1,2 @@
 Hello {{name}}, your password is {{password}}.
+مرحبا {{name}}، كلمة المرور الخاصة بك هي {{password}}.

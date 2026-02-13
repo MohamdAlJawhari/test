@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Excel Details</title>
+  <style>
+    :root {
+      --bg: #f4efe7;
+      --panel: #fffdf8;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #0f766e;
+      --accent-dark: #115e59;
+      --error-bg: #fef2f2;
+      --error-border: #fecaca;
+      --error-text: #991b1b;
+      --ok-bg: #ecfdf5;
+      --ok-border: #bbf7d0;
+      --ok-text: #14532d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, #fde68a 0, transparent 30%),
+        radial-gradient(circle at bottom left, #99f6e4 0, transparent 35%),
+        var(--bg);
+      padding: 22px;
+      display: grid;
+      place-items: start center;
+    }
+
+    .card {
+      width: min(980px, 100%);
+      background: var(--panel);
+      border: 1px solid #e5e7eb;
+      border-radius: 16px;
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+    }
+
+    .header {
+      padding: 20px 24px 14px;
+      border-bottom: 1px solid #e5e7eb;
+      display: grid;
+      gap: 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 1.42rem;
+    }
+
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.4;
+    }
+
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .link-btn {
+      text-decoration: none;
+      border: 1px solid #d1d5db;
+      color: var(--text);
+      background: #fff;
+      border-radius: 8px;
+      padding: 7px 10px;
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .link-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent-dark);
+    }
+
+    .section {
+      padding: 16px 24px 24px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .status {
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-weight: 600;
+      border: 1px solid transparent;
+    }
+
+    .status.ok {
+      background: var(--ok-bg);
+      border-color: var(--ok-border);
+      color: var(--ok-text);
+    }
+
+    .status.error {
+      background: var(--error-bg);
+      border-color: var(--error-border);
+      color: var(--error-text);
+    }
+
+    .row {
+      display: grid;
+      gap: 10px;
+    }
+
+    label {
+      font-size: 0.92rem;
+      font-weight: 600;
+      display: grid;
+      gap: 6px;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid #d1d5db;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      padding: 10px 12px;
+      color: var(--text);
+      background: #ffffff;
+    }
+
+    textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #ffffff;
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: var(--accent-dark);
+    }
+
+    button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 0.84rem;
+      margin: 0;
+    }
+
+    .preview-wrap {
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      overflow: auto;
+      max-height: 420px;
+      background: #ffffff;
+    }
+
+    .preview-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.83rem;
+    }
+
+    .preview-table th,
+    .preview-table td {
+      border: 1px solid #e5e7eb;
+      padding: 6px 8px;
+      text-align: left;
+      vertical-align: top;
+      min-width: 120px;
+      max-width: 260px;
+      overflow-wrap: anywhere;
+    }
+
+    .preview-table th {
+      background: #f9fafb;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 12px;
+      }
+
+      .header,
+      .section {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <header class="header">
+      <h1>Excel Details</h1>
+      {% if contact_file %}
+        <p class="hint">
+          Review this file and edit its name/description.
+        </p>
+      {% else %}
+        <p class="hint">Could not load this Excel file.</p>
+      {% endif %}
+      <div class="actions">
+        <a class="link-btn" href="/">Back to Sender</a>
+        {% if contact_file %}
+          <a class="link-btn" href="/?existing_contacts_file={{ contact_file.name|urlencode }}">Use This Excel in Sender</a>
+        {% endif %}
+      </div>
+    </header>
+
+    <section class="section">
+      {% if load_error %}
+        <div class="status error">{{ load_error }}</div>
+      {% endif %}
+
+      {% if contact_file %}
+        <div id="details-status" class="status" style="display: none;"></div>
+
+        <p class="small">
+          Stored file: <strong>{{ contact_file.name }}</strong><br>
+          Last modified: {{ contact_file.modified_at }}<br>
+          Size: {{ contact_file.size_label }}
+        </p>
+
+        <div class="row">
+          <label>
+            Excel Name
+            <input id="display-name" type="text" maxlength="120" value="{{ contact_file.display_name }}">
+          </label>
+          <label>
+            Description
+            <textarea id="description" maxlength="500">{{ contact_file.description }}</textarea>
+          </label>
+          <div>
+            <button id="save-btn" type="button">Save Details</button>
+          </div>
+        </div>
+
+        <p class="small">
+          Preview showing {{ preview.displayed_rows }} row(s){% if preview.total_rows %} out of {{ preview.total_rows }}{% endif %}{% if preview.truncated %} (limited){% endif %}.
+        </p>
+
+        {% if preview.headers %}
+          <div class="preview-wrap">
+            <table class="preview-table">
+              <thead>
+                <tr>
+                  {% for header in preview.headers %}
+                    <th>{{ header }}</th>
+                  {% endfor %}
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in preview.rows %}
+                  <tr>
+                    {% for cell in row %}
+                      <td>{{ cell }}</td>
+                    {% endfor %}
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <p class="small">No preview data available for this file.</p>
+        {% endif %}
+      {% endif %}
+    </section>
+  </main>
+
+  {% if contact_file %}
+    <script>
+      const fileName = {{ contact_file.name|tojson }};
+      const statusBox = document.getElementById('details-status');
+      const saveButton = document.getElementById('save-btn');
+      const displayNameInput = document.getElementById('display-name');
+      const descriptionInput = document.getElementById('description');
+
+      function setStatus(ok, message) {
+        statusBox.style.display = 'block';
+        statusBox.className = `status ${ok ? 'ok' : 'error'}`;
+        statusBox.textContent = message;
+      }
+
+      async function saveMetadata() {
+        const displayName = displayNameInput.value.trim();
+        const description = descriptionInput.value.trim();
+
+        if (!displayName) {
+          setStatus(false, 'Excel name cannot be empty.');
+          return;
+        }
+
+        saveButton.disabled = true;
+        try {
+          const response = await fetch(`/api/contacts/${encodeURIComponent(fileName)}/metadata`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              display_name: displayName,
+              description: description,
+            }),
+          });
+          const data = await response.json();
+
+          if (!response.ok || !data.ok) {
+            throw new Error(data.error || 'Could not save Excel details.');
+          }
+
+          setStatus(true, 'Excel details saved.');
+        } catch (err) {
+          setStatus(false, err && err.message ? err.message : 'Could not save Excel details.');
+        } finally {
+          saveButton.disabled = false;
+        }
+      }
+
+      saveButton.addEventListener('click', saveMetadata);
+    </script>
+  {% endif %}
+</body>
+</html>

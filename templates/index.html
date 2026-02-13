@@ -77,13 +77,21 @@
       padding: 10px;
       background: #ffffff;
       display: grid;
-      gap: 4px;
+      gap: 6px;
     }
 
     .history-name {
       font-size: 0.9rem;
       font-weight: 600;
       line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    .history-desc {
+      color: #374151;
+      font-size: 0.82rem;
+      line-height: 1.35;
+      white-space: pre-wrap;
       overflow-wrap: anywhere;
     }
 
@@ -100,6 +108,24 @@
       color: var(--muted);
       font-size: 0.9rem;
       background: #ffffff;
+    }
+
+    .history-open {
+      display: inline-block;
+      text-decoration: none;
+      border: 1px solid #d1d5db;
+      color: var(--text);
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 6px 10px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      justify-self: start;
+    }
+
+    .history-open:hover {
+      border-color: var(--accent);
+      color: var(--accent-dark);
     }
 
     .card {
@@ -142,7 +168,8 @@
     }
 
     input,
-    textarea {
+    textarea,
+    select {
       width: 100%;
       border: 1px solid #d1d5db;
       border-radius: 10px;
@@ -162,7 +189,8 @@
     }
 
     input:focus,
-    textarea:focus {
+    textarea:focus,
+    select:focus {
       outline: 2px solid rgba(15, 118, 110, 0.25);
       border-color: var(--accent);
     }
@@ -324,14 +352,16 @@
     <aside class="sidebar">
       <h2>Uploaded Excel Files</h2>
       <p class="small">
-        This list contains Excel files sent from this app.
+        Open any Excel to view preview and edit details on a dedicated page.
       </p>
       <ul id="history-list" class="history-list">
         {% if uploaded_excel_files %}
           {% for file in uploaded_excel_files %}
             <li class="history-item">
               <div class="history-name">{{ file.display_name }}</div>
+              <div class="history-desc">{{ file.description or 'No description yet.' }}</div>
               <div class="history-meta">{{ file.modified_at }} - {{ file.size_label }}</div>
+              <a class="history-open" href="/contacts/{{ file.name|urlencode }}">Open</a>
             </li>
           {% endfor %}
         {% else %}
@@ -383,11 +413,27 @@
         </label>
 
         <label>
-          Excel Contacts (Optional)
+          Upload New Excel (Optional)
           <input type="file" name="contacts_file" id="contacts-file-input" accept=".xlsx,.xlsm,.xltx,.xltm">
         </label>
+
+        <label>
+          Or Select Existing Excel (Optional)
+          <select name="existing_contacts_file" id="existing-contacts-select">
+            <option value="">-- Select saved Excel file --</option>
+            {% for file in uploaded_excel_files %}
+              <option value="{{ file.name }}" {% if selected_existing_contacts_file == file.name %}selected{% endif %}>
+                {{ file.display_name }} ({{ file.modified_at }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
         <p class="small">
-          If Excel is uploaded, it must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
+          If both are provided, uploaded Excel is used and also saved in history.
+        </p>
+        <p class="small">
+          Excel must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
         </p>
 
         <button id="send-button" type="submit">Send</button>
@@ -418,6 +464,7 @@
     const closeModalButton = document.getElementById('close-modal');
     const phoneInput = document.getElementById('phone-input');
     const contactsFileInput = document.getElementById('contacts-file-input');
+    const existingContactsSelect = document.getElementById('existing-contacts-select');
     const messageInput = document.getElementById('message-input');
     const historyList = document.getElementById('history-list');
     const defaultMessageTemplate = messageInput.value;
@@ -479,10 +526,15 @@
         AUTH_STATUS_FAILED: 'Could not read WhatsApp login status. Please retry.',
         MEDIA_TOO_LARGE: 'The selected media is too large. Choose a smaller file.',
         MISSING_CONTENT: 'Write a message or choose a media file.',
-        MISSING_TARGET: 'Enter a phone number or upload an Excel file.',
+        MISSING_TARGET: 'Enter a phone number, upload an Excel file, or select an existing Excel file.',
         VALIDATION_ERROR: fallbackMessage || 'Please check your input and try again.',
         INVALID_CONTACTS_FILE: 'Upload a valid Excel file (.xlsx).',
         CONTACTS_SAVE_FAILED: 'Could not save uploaded Excel file. Check disk space and try again.',
+        CONTACTS_METADATA_SAVE_FAILED: 'Could not save Excel details. Try again.',
+        CONTACT_FILE_NOT_FOUND: 'The selected Excel file was not found.',
+        CONTACTS_PREVIEW_FAILED: 'Could not read this Excel file.',
+        INVALID_CONTACT_METADATA: 'Excel name cannot be empty.',
+        INVALID_CONTACT_REFERENCE: 'Invalid Excel file reference.',
         EXCEL_PARSE_ERROR: 'Could not read the Excel file. Please check the format and try again.',
         EXCEL_EMPTY: 'Excel file is empty.',
         EXCEL_MISSING_NUMBERS: 'Excel file must contain a "NUMBERS" column in the first row.',
@@ -536,7 +588,13 @@
       return data;
     }
 
-    function renderContactsHistory(files) {
+    function renderHistoryAndSelect(files) {
+      const previousSelection = existingContactsSelect.value;
+      existingContactsSelect.innerHTML = '';
+      const placeholderOption = document.createElement('option');
+      placeholderOption.value = '';
+      placeholderOption.textContent = '-- Select saved Excel file --';
+      existingContactsSelect.appendChild(placeholderOption);
       historyList.innerHTML = '';
 
       if (!files || files.length === 0) {
@@ -548,29 +606,48 @@
       }
 
       for (const file of files) {
-        const item = document.createElement('li');
-        item.className = 'history-item';
+        const li = document.createElement('li');
+        li.className = 'history-item';
 
-        const nameNode = document.createElement('div');
-        nameNode.className = 'history-name';
-        nameNode.textContent = file.display_name || file.name || 'contacts.xlsx';
+        const name = document.createElement('div');
+        name.className = 'history-name';
+        name.textContent = file.display_name || file.name || 'contacts.xlsx';
 
-        const metaNode = document.createElement('div');
-        metaNode.className = 'history-meta';
+        const desc = document.createElement('div');
+        desc.className = 'history-desc';
+        desc.textContent = file.description || 'No description yet.';
+
+        const meta = document.createElement('div');
+        meta.className = 'history-meta';
         const modifiedAt = file.modified_at || '';
         const sizeLabel = file.size_label || '';
-        metaNode.textContent = [modifiedAt, sizeLabel].filter(Boolean).join(' - ');
+        meta.textContent = [modifiedAt, sizeLabel].filter(Boolean).join(' - ');
 
-        item.appendChild(nameNode);
-        item.appendChild(metaNode);
-        historyList.appendChild(item);
+        const open = document.createElement('a');
+        open.className = 'history-open';
+        open.href = `/contacts/${encodeURIComponent(file.name)}`;
+        open.textContent = 'Open';
+
+        li.appendChild(name);
+        li.appendChild(desc);
+        li.appendChild(meta);
+        li.appendChild(open);
+        historyList.appendChild(li);
+
+        const option = document.createElement('option');
+        option.value = file.name;
+        option.textContent = `${file.display_name || file.name} (${file.modified_at || ''})`;
+        if (previousSelection && previousSelection === file.name) {
+          option.selected = true;
+        }
+        existingContactsSelect.appendChild(option);
       }
     }
 
     async function refreshContactsHistory() {
       try {
         const result = await fetchJson('/api/contacts/history');
-        renderContactsHistory(result.files || []);
+        renderHistoryAndSelect(result.files || []);
       } catch (_err) {
         // History refresh should never block the main flow.
       }
@@ -635,9 +712,9 @@
       statusBox.classList.add('hidden');
 
       const hasPhone = Boolean(phoneInput.value.trim());
-      const hasExcel = Boolean(contactsFileInput.files && contactsFileInput.files.length > 0);
-      const hadExcelUpload = hasExcel;
-      if (!hasPhone && !hasExcel) {
+      const hasExcelUpload = Boolean(contactsFileInput.files && contactsFileInput.files.length > 0);
+      const hasExistingExcel = Boolean(existingContactsSelect.value);
+      if (!hasPhone && !hasExcelUpload && !hasExistingExcel) {
         const message = humanizeApiError('MISSING_TARGET');
         setResultMessage(message);
         setBanner(false, message);
@@ -656,7 +733,7 @@
         setBanner(true, message);
         form.reset();
         messageInput.value = defaultMessageTemplate;
-        if (hadExcelUpload) {
+        if (hasExcelUpload) {
           await refreshContactsHistory();
         }
       } catch (err) {

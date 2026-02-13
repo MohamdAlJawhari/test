@@ -1,5 +1,6 @@
 import base64
 import io
+import json
 import mimetypes
 import os
 import re
@@ -27,7 +28,10 @@ DEFAULT_MESSAGE_TEXT = "Hello {{name}}, your password is {{password}}."
 PROJECT_ROOT = Path(__file__).resolve().parent
 TEMPLATE_FILE_PATH = PROJECT_ROOT / "template.txt"
 CONTACTS_UPLOAD_DIR = PROJECT_ROOT / "data" / "contacts_uploads"
+CONTACTS_METADATA_FILE = CONTACTS_UPLOAD_DIR / "metadata.json"
 ALLOWED_EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xltx", ".xltm"}
+CONTACTS_PREVIEW_ROW_LIMIT = int(os.getenv("CONTACTS_PREVIEW_ROW_LIMIT", "20"))
+CONTACTS_PREVIEW_COLUMN_LIMIT = int(os.getenv("CONTACTS_PREVIEW_COLUMN_LIMIT", "15"))
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
@@ -70,7 +74,112 @@ def load_default_message_template() -> str:
     return DEFAULT_MESSAGE_TEXT
 
 
-def save_contacts_upload(filename: str, content: bytes) -> None:
+def _fallback_display_name(stored_filename: str) -> str:
+    filename_parts = stored_filename.split("_", 3)
+    return filename_parts[3] if len(filename_parts) == 4 else stored_filename
+
+
+def _sanitize_metadata_text(value, *, max_len: int) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if len(text) > max_len:
+        return text[:max_len]
+    return text
+
+
+def _load_contacts_metadata() -> dict[str, dict]:
+    if not CONTACTS_METADATA_FILE.exists():
+        return {}
+
+    try:
+        raw = CONTACTS_METADATA_FILE.read_text(encoding="utf-8")
+        parsed = json.loads(raw)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    if not isinstance(parsed, dict):
+        return {}
+
+    normalized: dict[str, dict] = {}
+    for key, value in parsed.items():
+        safe_key = secure_filename(Path(str(key)).name)
+        if not safe_key or safe_key != str(key):
+            continue
+
+        if not isinstance(value, dict):
+            continue
+
+        normalized[safe_key] = {
+            "display_name": _sanitize_metadata_text(value.get("display_name"), max_len=120),
+            "description": _sanitize_metadata_text(value.get("description"), max_len=500),
+            "created_at": str(value.get("created_at", "")).strip(),
+            "updated_at": str(value.get("updated_at", "")).strip(),
+        }
+
+    return normalized
+
+
+def _save_contacts_metadata(metadata: dict[str, dict]) -> None:
+    CONTACTS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        CONTACTS_METADATA_FILE.write_text(
+            json.dumps(metadata, ensure_ascii=True, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        raise AppError(
+            code="CONTACTS_METADATA_SAVE_FAILED",
+            message="Could not save Excel metadata.",
+            status=500,
+            details=str(exc),
+        ) from exc
+
+
+def _set_contacts_metadata(file_name: str, display_name: str | None = None, description: str | None = None) -> None:
+    metadata = _load_contacts_metadata()
+    now = datetime.now().isoformat(timespec="seconds")
+    entry = metadata.get(file_name, {})
+
+    if not entry.get("created_at"):
+        entry["created_at"] = now
+    entry["updated_at"] = now
+
+    if display_name is not None:
+        entry["display_name"] = _sanitize_metadata_text(display_name, max_len=120)
+    else:
+        entry.setdefault("display_name", "")
+
+    if description is not None:
+        entry["description"] = _sanitize_metadata_text(description, max_len=500)
+    else:
+        entry.setdefault("description", "")
+
+    metadata[file_name] = entry
+    _save_contacts_metadata(metadata)
+
+
+def _resolve_saved_contacts_path(file_name: str) -> Path:
+    safe_name = secure_filename(Path(str(file_name)).name)
+    if not safe_name or safe_name != str(file_name) or not _is_valid_excel_filename(safe_name):
+        raise AppError(
+            code="INVALID_CONTACT_REFERENCE",
+            message="Invalid Excel file reference.",
+            status=400,
+        )
+
+    file_path = CONTACTS_UPLOAD_DIR / safe_name
+    if not file_path.exists() or not file_path.is_file():
+        raise AppError(
+            code="CONTACT_FILE_NOT_FOUND",
+            message="Selected Excel file was not found.",
+            status=404,
+        )
+
+    return file_path
+
+
+def save_contacts_upload(filename: str, content: bytes) -> str:
     CONTACTS_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = secure_filename(Path(filename).name)
     if not safe_name:
@@ -90,6 +199,79 @@ def save_contacts_upload(filename: str, content: bytes) -> None:
             details=str(exc),
         ) from exc
 
+    _set_contacts_metadata(stored_name, display_name=Path(filename).name, description="")
+    return stored_name
+
+
+def read_excel_preview(file_path: Path) -> dict:
+    workbook = None
+    try:
+        workbook = load_workbook(filename=file_path, data_only=True, read_only=True)
+    except Exception as exc:
+        raise AppError(
+            code="CONTACTS_PREVIEW_FAILED",
+            message="Could not read the selected Excel file.",
+            status=400,
+            details=str(exc),
+        ) from exc
+
+    try:
+        sheet = workbook.active
+        rows_iter = sheet.iter_rows(values_only=True)
+        header_row = next(rows_iter, None)
+
+        if header_row is None:
+            return {
+                "headers": [],
+                "rows": [],
+                "total_rows": 0,
+                "displayed_rows": 0,
+                "truncated": False,
+            }
+
+        raw_headers = list(header_row)
+        if not raw_headers:
+            return {
+                "headers": [],
+                "rows": [],
+                "total_rows": 0,
+                "displayed_rows": 0,
+                "truncated": False,
+            }
+
+        column_count = min(len(raw_headers), max(1, CONTACTS_PREVIEW_COLUMN_LIMIT))
+        headers: list[str] = []
+        for idx in range(column_count):
+            header_text = _cell_to_text(raw_headers[idx]).strip()
+            headers.append(header_text or f"Column {idx + 1}")
+
+        rows: list[list[str]] = []
+        for raw_row in rows_iter:
+            row_values: list[str] = []
+            for idx in range(column_count):
+                cell = raw_row[idx] if idx < len(raw_row) else ""
+                row_values.append(_cell_to_text(cell))
+
+            if not any(item.strip() for item in row_values):
+                continue
+
+            if len(rows) < CONTACTS_PREVIEW_ROW_LIMIT:
+                rows.append(row_values)
+
+        total_rows = max(int(sheet.max_row) - 1, 0)
+        displayed_rows = len(rows)
+        truncated = total_rows > displayed_rows
+        return {
+            "headers": headers,
+            "rows": rows,
+            "total_rows": total_rows,
+            "displayed_rows": displayed_rows,
+            "truncated": truncated,
+        }
+    finally:
+        if workbook is not None:
+            workbook.close()
+
 
 def list_saved_contacts_files() -> list[dict]:
     if not CONTACTS_UPLOAD_DIR.exists():
@@ -106,6 +288,17 @@ def list_saved_contacts_files() -> list[dict]:
         except OSError:
             continue
 
+    metadata = _load_contacts_metadata()
+    file_names = {path.name for path, _mtime in collected}
+    stale_keys = [key for key in metadata.keys() if key not in file_names]
+    if stale_keys:
+        for key in stale_keys:
+            metadata.pop(key, None)
+        try:
+            _save_contacts_metadata(metadata)
+        except AppError:
+            pass
+
     files: list[dict] = []
     for path, _mtime in sorted(collected, key=lambda item: item[1], reverse=True):
         try:
@@ -113,13 +306,15 @@ def list_saved_contacts_files() -> list[dict]:
         except OSError:
             continue
 
-        filename_parts = path.name.split("_", 3)
-        display_name = filename_parts[3] if len(filename_parts) == 4 else path.name
+        metadata_entry = metadata.get(path.name, {})
+        display_name = metadata_entry.get("display_name") or _fallback_display_name(path.name)
+        description = metadata_entry.get("description", "")
 
         files.append(
             {
                 "name": path.name,
                 "display_name": display_name,
+                "description": description,
                 "modified_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
                 "size_bytes": stat.st_size,
                 "size_label": _format_size(stat.st_size),
@@ -472,11 +667,21 @@ def logout_session() -> None:
 
 @app.get("/")
 def home():
+    uploaded_excel_files = list_saved_contacts_files()
+    selected_existing_contacts_file = ""
+    requested_file = request.args.get("existing_contacts_file", "").strip()
+    if requested_file:
+        try:
+            selected_existing_contacts_file = _resolve_saved_contacts_path(requested_file).name
+        except AppError:
+            selected_existing_contacts_file = ""
+
     return render_template(
         "index.html",
         default_country_code=DEFAULT_COUNTRY_CODE,
         default_message_template=load_default_message_template(),
-        uploaded_excel_files=list_saved_contacts_files(),
+        uploaded_excel_files=uploaded_excel_files,
+        selected_existing_contacts_file=selected_existing_contacts_file,
     )
 
 
@@ -520,22 +725,112 @@ def api_contacts_history():
         return _handle_api_exception(exc)
 
 
+@app.get("/api/contacts/<path:file_name>/preview")
+def api_contacts_preview(file_name: str):
+    try:
+        file_path = _resolve_saved_contacts_path(file_name)
+        metadata = _load_contacts_metadata().get(file_path.name, {})
+        preview = read_excel_preview(file_path)
+        return jsonify(
+            {
+                "ok": True,
+                "file": {
+                    "name": file_path.name,
+                    "display_name": metadata.get("display_name") or _fallback_display_name(file_path.name),
+                    "description": metadata.get("description", ""),
+                },
+                "preview": preview,
+            }
+        )
+    except Exception as exc:
+        return _handle_api_exception(exc)
+
+
+@app.post("/api/contacts/<path:file_name>/metadata")
+def api_contacts_metadata(file_name: str):
+    try:
+        _ = _resolve_saved_contacts_path(file_name)
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            payload = {}
+
+        display_name = _sanitize_metadata_text(payload.get("display_name"), max_len=120)
+        description = _sanitize_metadata_text(payload.get("description"), max_len=500)
+        if not display_name:
+            raise AppError(
+                code="INVALID_CONTACT_METADATA",
+                message="Excel name cannot be empty.",
+                status=400,
+            )
+
+        _set_contacts_metadata(file_name, display_name=display_name, description=description)
+        return jsonify({"ok": True})
+    except Exception as exc:
+        return _handle_api_exception(exc)
+
+
+@app.get("/contacts/<path:file_name>")
+def contacts_details_page(file_name: str):
+    try:
+        file_path = _resolve_saved_contacts_path(file_name)
+        file_info = next(
+            (item for item in list_saved_contacts_files() if item.get("name") == file_path.name),
+            None,
+        )
+        if not file_info:
+            raise AppError(
+                code="CONTACT_FILE_NOT_FOUND",
+                message="Selected Excel file was not found.",
+                status=404,
+            )
+
+        preview = read_excel_preview(file_path)
+        return render_template(
+            "contact_details.html",
+            contact_file=file_info,
+            preview=preview,
+            load_error="",
+        )
+    except AppError as exc:
+        return (
+            render_template(
+                "contact_details.html",
+                contact_file=None,
+                preview={"headers": [], "rows": [], "total_rows": 0, "displayed_rows": 0, "truncated": False},
+                load_error=exc.message,
+            ),
+            exc.status,
+        )
+    except Exception:
+        return (
+            render_template(
+                "contact_details.html",
+                contact_file=None,
+                preview={"headers": [], "rows": [], "total_rows": 0, "displayed_rows": 0, "truncated": False},
+                load_error="Could not load this Excel file.",
+            ),
+            500,
+        )
+
+
 @app.post("/api/send")
 def api_send():
     phone = request.form.get("phone", "").strip()
     message = request.form.get("message", "").strip()
     uploaded_file = request.files.get("media")
     contacts_file = request.files.get("contacts_file")
+    existing_contacts_file = request.form.get("existing_contacts_file", "").strip()
 
     try:
         has_contacts_file = bool(contacts_file and contacts_file.filename)
+        has_existing_contacts_file = bool(existing_contacts_file)
         has_media = bool(uploaded_file and uploaded_file.filename)
         has_message = bool(message)
 
-        if not has_contacts_file and not phone:
+        if not has_contacts_file and not has_existing_contacts_file and not phone:
             raise AppError(
                 code="MISSING_TARGET",
-                message="Enter a phone number or upload an Excel file.",
+                message="Enter a phone number, upload an Excel file, or select an existing Excel file.",
                 status=400,
             )
 
@@ -546,31 +841,55 @@ def api_send():
                 status=400,
             )
 
-        if has_contacts_file:
-            contacts_filename = (contacts_file.filename or "").strip()
-            if not contacts_filename:
-                raise AppError(
-                    code="INVALID_CONTACTS_FILE",
-                    message="Upload a valid Excel .xlsx file.",
-                    status=400,
-                )
+        if has_contacts_file or has_existing_contacts_file:
+            contacts_filename = ""
+            contacts_bytes = b""
 
-            if not _is_valid_excel_filename(contacts_filename):
-                raise AppError(
-                    code="INVALID_CONTACTS_FILE",
-                    message="Upload a valid Excel .xlsx file.",
-                    status=400,
-                )
+            if has_contacts_file:
+                contacts_filename = (contacts_file.filename or "").strip()
+                if not contacts_filename:
+                    raise AppError(
+                        code="INVALID_CONTACTS_FILE",
+                        message="Upload a valid Excel .xlsx file.",
+                        status=400,
+                    )
 
-            contacts_bytes = contacts_file.read()
-            if not contacts_bytes:
-                raise AppError(
-                    code="EXCEL_EMPTY",
-                    message="Excel file is empty.",
-                    status=400,
-                )
+                if not _is_valid_excel_filename(contacts_filename):
+                    raise AppError(
+                        code="INVALID_CONTACTS_FILE",
+                        message="Upload a valid Excel .xlsx file.",
+                        status=400,
+                    )
 
-            save_contacts_upload(contacts_filename, contacts_bytes)
+                contacts_bytes = contacts_file.read()
+                if not contacts_bytes:
+                    raise AppError(
+                        code="EXCEL_EMPTY",
+                        message="Excel file is empty.",
+                        status=400,
+                    )
+
+                save_contacts_upload(contacts_filename, contacts_bytes)
+            else:
+                existing_path = _resolve_saved_contacts_path(existing_contacts_file)
+                contacts_filename = existing_path.name
+                try:
+                    contacts_bytes = existing_path.read_bytes()
+                except OSError as exc:
+                    raise AppError(
+                        code="CONTACTS_PREVIEW_FAILED",
+                        message="Could not read the selected Excel file.",
+                        status=400,
+                        details=str(exc),
+                    ) from exc
+
+                if not contacts_bytes:
+                    raise AppError(
+                        code="EXCEL_EMPTY",
+                        message="Excel file is empty.",
+                        status=400,
+                    )
+
             rows = parse_excel_contacts(contacts_filename, contacts_bytes)
             media_data_url = upload_to_data_url(uploaded_file) if has_media else ""
             media_filename = uploaded_file.filename if has_media else ""
