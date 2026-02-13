@@ -22,7 +22,7 @@
         <p class="hint">Could not load this contacts file.</p>
       {% endif %}
       <div class="actions">
-        <a class="link-btn" href="/">Back to Sender</a>
+        <a class="link-btn back-link" href="/">&lt; Back to Sender</a>
         {% if contact_file %}
           <a class="link-btn" href="/?existing_contacts_file={{ contact_file.name|urlencode }}">Use This File in Sender</a>
           <a class="link-btn" href="/api/contacts/{{ contact_file.name|urlencode }}/download">Download File</a>

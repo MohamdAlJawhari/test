@@ -58,6 +58,28 @@ body {
   color: #1b3250;
 }
 
+.upload-section {
+  display: grid;
+  gap: 6px;
+}
+
+.upload-btn {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 0.88rem;
+  border: 1px solid var(--line-strong);
+  background: #f3f8ff;
+  color: #1a3c66;
+}
+
+.upload-btn:hover {
+  background: #e9f2ff;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
 .history-list {
   margin: 0;
   padding: 0;
@@ -155,6 +177,33 @@ form {
   padding: 20px 24px 24px;
   display: grid;
   gap: 14px;
+}
+
+.send-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 14px;
+  align-items: start;
+}
+
+.send-main {
+  display: grid;
+  gap: 14px;
+}
+
+.phone-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.phone-panel h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #1d3552;
 }
 
 label {
@@ -325,6 +374,10 @@ button.secondary:hover {
 
   .sidebar {
     max-height: none;
+  }
+
+  .send-layout {
+    grid-template-columns: 1fr;
   }
 }
 

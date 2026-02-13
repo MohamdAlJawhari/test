@@ -13,6 +13,7 @@
   const closeModalButton = document.getElementById('close-modal');
   const phoneInput = document.getElementById('phone-input');
   const contactsFileInput = document.getElementById('contacts-file-input');
+  const contactsUploadButton = document.getElementById('contacts-upload-btn');
   const existingContactsSelect = document.getElementById('existing-contacts-select');
   const messageInput = document.getElementById('message-input');
   const historyList = document.getElementById('history-list');
@@ -297,6 +298,12 @@
   }
 
   closeModalButton.addEventListener('click', closeModal);
+
+  if (contactsUploadButton && contactsFileInput) {
+    contactsUploadButton.addEventListener('click', () => {
+      contactsFileInput.click();
+    });
+  }
 
   contactsFileInput.addEventListener('change', async () => {
     const file = contactsFileInput.files && contactsFileInput.files[0];

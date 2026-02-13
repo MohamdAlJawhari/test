@@ -602,7 +602,7 @@ def _map_node_error(status_code: int, raw_error: str | None = None) -> AppError:
 def normalize_to_whatsapp_id(raw_phone: str) -> str:
     """
     Convert user input into WhatsApp ID format expected by WPPConnect.
-    Output example: 96181744432@c.us
+    Output example: 96181777444@c.us
     """
     if not raw_phone or not raw_phone.strip():
         raise ValueError("Phone number is required.")

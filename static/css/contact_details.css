@@ -87,6 +87,19 @@ h1 {
   color: var(--accent-dark);
 }
 
+.link-btn.back-link {
+  border-color: #9fb2c7;
+  background: #edf4ff;
+  color: #163b63;
+  font-weight: 800;
+}
+
+.link-btn.back-link:hover {
+  border-color: #7f9fbe;
+  background: #dfeeff;
+  color: #102f50;
+}
+
 .section {
   padding: 16px 24px 24px;
   display: grid;

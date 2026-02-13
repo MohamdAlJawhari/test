@@ -13,16 +13,19 @@
       <p class="small">
         Open any file to view preview and edit details on a dedicated page.
       </p>
-      <label>
-        Upload New Contacts File (Optional)
+      <div class="upload-section">
+        <button id="contacts-upload-btn" type="button" class="upload-btn">
+          Upload New Contacts File (Optional)
+        </button>
         <input
           type="file"
           name="contacts_file"
           id="contacts-file-input"
           accept=".xlsx,.xlsm,.xltx,.xltm,.csv"
           form="send-form"
+          class="hidden-file-input"
         >
-      </label>
+      </div>
       <p class="small">Selecting a file saves it immediately to your uploaded files list.</p>
       <ul id="history-list" class="history-list">
         {% if uploaded_excel_files %}
@@ -54,54 +57,64 @@
       <div id="status" class="status hidden"></div>
 
       <form id="send-form" method="post" enctype="multipart/form-data">
-        <label>
-          Phone Number
-          <input
-            type="text"
-            name="phone"
-            id="phone-input"
-            placeholder="81744432 or 96181744432"
-          >
-        </label>
+        <div class="send-layout">
+          <div class="send-main">
+            <label>
+              Message
+              <textarea
+                name="message"
+                id="message-input"
+                placeholder="Write text message. If you choose media, this is used as caption."
+              >{{- default_message_template -}}</textarea>
+            </label>
 
-        <label>
-          Message
-          <textarea
-            name="message"
-            id="message-input"
-            placeholder="Write text message. If you choose media, this is used as caption."
-          >{{- default_message_template -}}</textarea>
-        </label>
+            <p class="small">
+              Use contacts variables inside message like <code>{% raw %}{{name}}{% endraw %}</code> or <code>{% raw %}{{password}}{% endraw %}</code>.
+            </p>
 
-        <p class="small">
-          Use contacts variables inside message like <code>{% raw %}{{name}}{% endraw %}</code> or <code>{% raw %}{{password}}{% endraw %}</code>.
-        </p>
+            <label>
+              Media (Optional)
+              <input type="file" name="media" accept="image/*,video/*,.pdf,.doc,.docx,.txt">
+            </label>
 
-        <label>
-          Media (Optional)
-          <input type="file" name="media" accept="image/*,video/*,.pdf,.doc,.docx,.txt">
-        </label>
+            <label>
+              Select Existing Contacts File (Optional)
+              <select name="existing_contacts_file" id="existing-contacts-select">
+                <option value="">-- Select saved contacts file --</option>
+                {% for file in uploaded_excel_files %}
+                  <option value="{{ file.name }}" {% if selected_existing_contacts_file == file.name %}selected{% endif %}>
+                    {{ file.display_name }} ({{ file.modified_at }})
+                  </option>
+                {% endfor %}
+              </select>
+            </label>
 
-        <label>
-          Select Existing Contacts File (Optional)
-          <select name="existing_contacts_file" id="existing-contacts-select">
-            <option value="">-- Select saved contacts file --</option>
-            {% for file in uploaded_excel_files %}
-              <option value="{{ file.name }}" {% if selected_existing_contacts_file == file.name %}selected{% endif %}>
-                {{ file.display_name }} ({{ file.modified_at }})
-              </option>
-            {% endfor %}
-          </select>
-        </label>
+            <p class="small">
+              If both are provided, uploaded file is used and also saved in history.
+            </p>
+            <p class="small">
+              Contacts file (.xlsx or .csv) must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
+            </p>
 
-        <p class="small">
-          If both are provided, uploaded file is used and also saved in history.
-        </p>
-        <p class="small">
-          Contacts file (.xlsx or .csv) must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
-        </p>
+            <button id="send-button" type="submit">Send</button>
+          </div>
 
-        <button id="send-button" type="submit">Send</button>
+          <aside class="phone-panel">
+            <h3>Direct Number (Optional)</h3>
+            <p class="small">
+              Use this only when sending to one person directly.
+            </p>
+            <label>
+              Phone Number
+              <input
+                type="text"
+                name="phone"
+                id="phone-input"
+                placeholder="81777444 or 96181777444"
+              >
+            </label>
+          </aside>
+        </div>
       </form>
     </main>
   </div>
