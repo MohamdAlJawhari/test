@@ -40,6 +40,24 @@ body {
   align-items: start;
 }
 
+.sidebar-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: calc(100vh - 48px);
+}
+
+.sidebar-stack .sidebar {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+
+.sidebar-stack .sidebar.sidebar-phone {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
 .sidebar {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -181,7 +199,6 @@ form {
 
 .send-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
   gap: 14px;
   align-items: start;
 }
@@ -226,7 +243,7 @@ select {
 }
 
 textarea {
-  min-height: 120px;
+  min-height: 160px;
   resize: vertical;
 }
 
@@ -382,12 +399,12 @@ button.secondary:hover {
     grid-template-columns: 1fr;
   }
 
-  .sidebar {
+  .sidebar-stack {
     max-height: none;
   }
 
-  .send-layout {
-    grid-template-columns: 1fr;
+  .sidebar {
+    max-height: none;
   }
 }
 

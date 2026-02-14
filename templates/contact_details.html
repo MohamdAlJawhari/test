@@ -22,10 +22,10 @@
         <p class="hint">Could not load this contacts file.</p>
       {% endif %}
       <div class="actions">
-        <a class="link-btn back-link" href="/">&lt; Back to Sender</a>
+        <a class="link-btn back-link" href="/">&lt; Back</a>
         {% if contact_file %}
-          <a class="link-btn" href="/?existing_contacts_file={{ contact_file.name|urlencode }}">Use This File in Sender</a>
-          <a class="link-btn" href="/api/contacts/{{ contact_file.name|urlencode }}/download">Download File</a>
+          <a class="link-btn use-file-btn" href="/?existing_contacts_file={{ contact_file.name|urlencode }}">Select File</a>
+          <a class="link-btn download-btn" href="/api/contacts/{{ contact_file.name|urlencode }}/download">Download File</a>
           <button id="delete-file-btn" type="button" class="danger-btn">Delete File</button>
         {% endif %}
       </div>
@@ -45,7 +45,7 @@
           Size: {{ contact_file.size_label }}
         </p>
 
-        <div class="row">
+        <div class="meta-row">
           <label>
             File Name
             <input id="display-name" type="text" maxlength="120" value="{{ contact_file.display_name }}">
@@ -54,7 +54,7 @@
             Description
             <textarea id="description" maxlength="500">{{ contact_file.description }}</textarea>
           </label>
-          <div>
+          <div class="meta-actions">
             <button id="save-meta-btn" type="button">Save Details</button>
           </div>
         </div>

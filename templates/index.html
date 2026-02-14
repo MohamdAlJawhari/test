@@ -8,40 +8,59 @@
 </head>
 <body>
   <div class="layout">
-    <aside class="sidebar">
-      <h2>Uploaded Contacts Files</h2>
-      <p class="small">
-        Open any file to view preview and edit details on a dedicated page.
-      </p>
-      <div class="upload-section">
-        <button id="contacts-upload-btn" type="button" class="upload-btn">
-          Upload New Contacts File (Optional)
-        </button>
-        <input
-          type="file"
-          name="contacts_file"
-          id="contacts-file-input"
-          accept=".xlsx,.xlsm,.xltx,.xltm,.csv"
-          form="send-form"
-          class="hidden-file-input"
-        >
-      </div>
-      <p class="small">Selecting a file saves it immediately to your uploaded files list.</p>
-      <ul id="history-list" class="history-list">
-        {% if uploaded_excel_files %}
-          {% for file in uploaded_excel_files %}
-            <li class="history-item">
-              <div class="history-name">{{ file.display_name }}</div>
-              <div class="history-desc">{{ file.description or 'No description yet.' }}</div>
-              <div class="history-meta">{{ file.modified_at }} - {{ file.size_label }}</div>
-              <a class="history-open" href="/contacts/{{ file.name|urlencode }}">Open</a>
-            </li>
-          {% endfor %}
-        {% else %}
-          <li class="history-empty">No contacts files uploaded yet.</li>
-        {% endif %}
-      </ul>
-    </aside>
+    <div class="sidebar-stack">
+      <aside class="sidebar">
+        <h2>Uploaded Contacts Files</h2>
+        <p class="small">
+          Open any file to view preview and edit details on a dedicated page.
+        </p>
+        <div class="upload-section">
+          <button id="contacts-upload-btn" type="button" class="upload-btn">
+            Upload New Contacts File (Optional)
+          </button>
+          <input
+            type="file"
+            name="contacts_file"
+            id="contacts-file-input"
+            accept=".xlsx,.xlsm,.xltx,.xltm,.csv"
+            form="send-form"
+            class="hidden-file-input"
+          >
+        </div>
+        <p class="small">Selecting a file saves it immediately to your uploaded files list.</p>
+        <ul id="history-list" class="history-list">
+          {% if uploaded_excel_files %}
+            {% for file in uploaded_excel_files %}
+              <li class="history-item">
+                <div class="history-name">{{ file.display_name }}</div>
+                <div class="history-desc">{{ file.description or 'No description yet.' }}</div>
+                <div class="history-meta">{{ file.modified_at }} - {{ file.size_label }}</div>
+                <a class="history-open" href="/contacts/{{ file.name|urlencode }}">Open</a>
+              </li>
+            {% endfor %}
+          {% else %}
+            <li class="history-empty">No contacts files uploaded yet.</li>
+          {% endif %}
+        </ul>
+      </aside>
+
+      <aside class="sidebar sidebar-phone">
+        <h2>Direct Number (Optional)</h2>
+        <p class="small">
+          Use this only when sending to one person directly.
+        </p>
+        <label>
+          Phone Number
+          <input
+            type="text"
+            name="phone"
+            id="phone-input"
+            placeholder="81777444 or 96181777444"
+            form="send-form"
+          >
+        </label>
+      </aside>
+    </div>
 
     <main class="card">
       <header class="header">
@@ -104,22 +123,6 @@
               Session stays active between sends for stability. Use Logout to end the WhatsApp session.
             </p>
           </div>
-
-          <aside class="phone-panel">
-            <h3>Direct Number (Optional)</h3>
-            <p class="small">
-              Use this only when sending to one person directly.
-            </p>
-            <label>
-              Phone Number
-              <input
-                type="text"
-                name="phone"
-                id="phone-input"
-                placeholder="81777444 or 96181777444"
-              >
-            </label>
-          </aside>
         </div>
       </form>
     </main>

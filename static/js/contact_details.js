@@ -61,7 +61,11 @@
   function createMiniButton(type, action, text, title) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `mini-btn ${type}`;
+    const normalizedText = String(text || '').trim();
+    const normalizedAction = String(action || '').toLowerCase();
+    const isPlus = normalizedText === '+' || normalizedAction.includes('insert');
+    const isMinus = normalizedText === '-' || normalizedAction.includes('remove');
+    button.className = `mini-btn ${type} ${isPlus ? 'mini-plus' : ''} ${isMinus ? 'mini-minus' : ''}`.trim();
     button.dataset.action = action;
     button.textContent = text;
     button.title = title;
