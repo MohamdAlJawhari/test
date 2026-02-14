@@ -5,7 +5,12 @@ from pathlib import Path
 
 from flask import jsonify, render_template, request, send_file
 
-from .config import BATCH_SEND_DELAY_SECONDS, DEFAULT_COUNTRY_CODE, load_default_message_template
+from .config import (
+    BATCH_SEND_DELAY_SECONDS,
+    DEFAULT_COUNTRY_CODE,
+    load_default_message_template,
+    save_default_message_template,
+)
 from .contacts import (
     build_download_name,
     fallback_display_name,
@@ -100,6 +105,44 @@ def register_routes(app, node_api: NodeApiClient) -> None:
                     "message": "Logged out. Press Send to generate a new QR code.",
                 }
             )
+        except Exception as exc:
+            return handle_api_exception(exc)
+
+    @app.post("/api/template")
+    def api_template_update():
+        try:
+            payload = request.get_json(silent=True) or {}
+            template_text = payload.get("template")
+            if template_text is None:
+                raise AppError(
+                    code="TEMPLATE_MISSING",
+                    message="Template text is required.",
+                    status=400,
+                )
+            if not isinstance(template_text, str):
+                raise AppError(
+                    code="TEMPLATE_INVALID",
+                    message="Template text must be a string.",
+                    status=400,
+                )
+            if len(template_text) > 20000:
+                raise AppError(
+                    code="TEMPLATE_TOO_LARGE",
+                    message="Template text is too large.",
+                    status=413,
+                )
+
+            try:
+                save_default_message_template(template_text)
+            except OSError as exc:
+                raise AppError(
+                    code="TEMPLATE_SAVE_FAILED",
+                    message="Could not save message template.",
+                    status=500,
+                    details=str(exc),
+                ) from exc
+
+            return jsonify({"ok": True})
         except Exception as exc:
             return handle_api_exception(exc)
 

@@ -13,7 +13,27 @@
     data-file-name="{{ contact_file.name if contact_file else '' }}"
   >
     <header class="header">
-      <h1>Contacts File Details</h1>
+      <h1 class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg class="brand-icon" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M14 2v6h6"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
+        Contacts File Details
+      </h1>
       {% if contact_file %}
         <p class="hint">
           Review this file and edit its name, description, columns, and rows.
@@ -22,11 +42,97 @@
         <p class="hint">Could not load this contacts file.</p>
       {% endif %}
       <div class="actions">
-        <a class="link-btn back-link" href="/">&lt; Back</a>
+        <a class="link-btn back-link" href="/">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M15 18l-6-6 6-6"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          Back
+        </a>
         {% if contact_file %}
-          <a class="link-btn use-file-btn" href="/?existing_contacts_file={{ contact_file.name|urlencode }}">Select File</a>
-          <a class="link-btn download-btn" href="/api/contacts/{{ contact_file.name|urlencode }}/download">Download File</a>
-          <button id="delete-file-btn" type="button" class="danger-btn">Delete File</button>
+          <a class="link-btn use-file-btn" href="/?existing_contacts_file={{ contact_file.name|urlencode }}">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M20 6L9 17l-5-5"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            Select File Sender
+          </a>
+          <a class="link-btn download-btn" href="/api/contacts/{{ contact_file.name|urlencode }}/download">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 3v12"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M8 11l4 4 4-4"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M4 21h16"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            Download File
+          </a>
+          <button id="delete-file-btn" type="button" class="danger-btn">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M3 6h18"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M10 11v6"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M14 11v6"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            Delete File
+          </button>
         {% endif %}
       </div>
     </header>
@@ -48,14 +154,25 @@
         <div class="meta-row">
           <label>
             File Name
-            <input id="display-name" type="text" maxlength="120" value="{{ contact_file.display_name }}">
+            <input id="display-name" type="text" dir="auto" maxlength="120" value="{{ contact_file.display_name }}">
           </label>
           <label>
             Description
-            <textarea id="description" maxlength="500">{{ contact_file.description }}</textarea>
+            <textarea id="description" dir="auto" maxlength="500">{{ contact_file.description }}</textarea>
           </label>
           <div class="meta-actions">
-            <button id="save-meta-btn" type="button">Save Details</button>
+            <button id="save-meta-btn" type="button">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M20 6L9 17l-5-5"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              Save Details
+            </button>
           </div>
         </div>
 
@@ -69,7 +186,18 @@
             The main <strong>NUMBERS</strong> column name is locked.
           </p>
           <div class="table-toolbar">
-            <button id="save-content-btn" type="button">Save File Content</button>
+            <button id="save-content-btn" type="button">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M20 6L9 17l-5-5"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              Save File Content
+            </button>
           </div>
 
           <div class="preview-wrap">
@@ -107,7 +235,18 @@
             Then use the small <strong>[-]</strong> and <strong>[+]</strong> buttons for row/column control.
           </p>
           <div class="table-toolbar">
-            <button id="save-content-btn" type="button">Save File Content</button>
+            <button id="save-content-btn" type="button">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M20 6L9 17l-5-5"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              Save File Content
+            </button>
           </div>
           <div class="preview-wrap">
             <table class="preview-table" id="editable-table">

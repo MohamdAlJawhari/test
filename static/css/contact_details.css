@@ -1,23 +1,26 @@
 :root {
-  --bg-top: #edf4ff;
-  --bg-bottom: #eef8f1;
+  --bg-top: #eafff3;
+  --bg-bottom: #f3fbff;
   --panel: #ffffff;
-  --panel-soft: #f7fafc;
-  --text: #1b2533;
-  --muted: #5d6b7b;
-  --accent: #1d6fd8;
-  --accent-dark: #1556a6;
-  --line: #d9e1ea;
-  --line-strong: #c6d1de;
-  --excel-grid: #d2d9e3;
-  --excel-head: #f2f5fa;
-  --excel-focus: #2b78ff;
-  --error-bg: #fff1f1;
-  --error-border: #f2b8b5;
-  --error-text: #9b2c2c;
-  --ok-bg: #eefaf1;
-  --ok-border: #bfe4c8;
-  --ok-text: #216737;
+  --panel-soft: #f3f7f5;
+  --text: #0f172a;
+  --muted: #475569;
+  --accent: #22c55e;
+  --accent-dark: #16a34a;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --shadow-sm: 0 10px 24px rgba(2, 6, 23, 0.06);
+  --shadow-md: 0 18px 42px rgba(2, 6, 23, 0.08);
+  --focus-ring: 0 0 0 3px rgba(34, 197, 94, 0.25);
+  --excel-grid: #e2e8f0;
+  --excel-head: #f1f5f9;
+  --excel-focus: #22c55e;
+  --error-bg: #fff1f2;
+  --error-border: #fecaca;
+  --error-text: #b91c1c;
+  --ok-bg: #ecfdf5;
+  --ok-border: #bbf7d0;
+  --ok-text: #166534;
 }
 
 * {
@@ -27,7 +30,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial,
+    "Noto Sans", "Liberation Sans", sans-serif;
   color: var(--text);
   background: linear-gradient(140deg, var(--bg-top), var(--bg-bottom));
   padding: 22px;
@@ -35,12 +39,19 @@ body {
   place-items: start center;
 }
 
+.icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-block;
+}
+
 .card {
   width: min(980px, 100%);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: 0 12px 28px rgba(18, 40, 72, 0.08);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
@@ -52,10 +63,30 @@ body {
   background: var(--panel-soft);
 }
 
-h1 {
+.brand {
   margin: 0;
   font-size: 1.42rem;
-  color: #173b68;
+  color: #0b2a1c;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  letter-spacing: 0.2px;
+}
+
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: rgba(34, 197, 94, 0.14);
+  display: grid;
+  place-items: center;
+  color: var(--accent-dark);
+}
+
+.brand-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 
 .hint {
@@ -69,6 +100,7 @@ h1 {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .link-btn {
@@ -76,15 +108,19 @@ h1 {
   border: 1px solid var(--line-strong);
   color: var(--text);
   background: #fff;
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 0.84rem;
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-size: 0.85rem;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .link-btn:hover {
   border-color: var(--accent);
   color: var(--accent-dark);
+  background: #f8fafc;
 }
 
 .link-btn.use-file-btn {
@@ -112,16 +148,16 @@ h1 {
 }
 
 .link-btn.back-link {
-  border-color: #9fb2c7;
-  background: #edf4ff;
-  color: #163b63;
+  border-color: var(--line-strong);
+  background: #ffffff;
+  color: var(--text);
   font-weight: 800;
 }
 
 .link-btn.back-link:hover {
-  border-color: #7f9fbe;
-  background: #dfeeff;
-  color: #102f50;
+  border-color: #94a3b8;
+  background: #f8fafc;
+  color: var(--text);
 }
 
 .section {
@@ -193,13 +229,15 @@ textarea {
   padding: 10px 12px;
   color: var(--text);
   background: #ffffff;
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 input:focus,
 textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(29, 111, 216, 0.18);
+  box-shadow: var(--focus-ring);
 }
 
 textarea {
@@ -209,32 +247,47 @@ textarea {
 
 button {
   border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--accent);
+  border-radius: 12px;
+  background: var(--accent-dark);
   color: #ffffff;
   font-size: 0.95rem;
   font-weight: 800;
   padding: 10px 14px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 10px 22px rgba(22, 163, 74, 0.18);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 button:hover {
-  background: var(--accent-dark);
+  background: #15803d;
 }
 
 button:disabled {
   opacity: 0.7;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .actions .danger-btn {
   border: 1px solid #ef4444;
   background: #fff;
   color: #991b1b;
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 0.84rem;
+  border-radius: 12px;
+  padding: 9px 12px;
+  font-size: 0.85rem;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: none;
 }
 
 .actions .danger-btn:hover {
@@ -311,7 +364,7 @@ button:disabled {
   justify-content: flex-end;
   padding: 2px;
   border-bottom: 1px solid var(--excel-grid);
-  background: #ebf1f8;
+  background: #f8fafc;
 }
 
 .mini-btn {
@@ -325,6 +378,14 @@ button:disabled {
   font-size: 0.78rem;
   font-weight: 800;
   line-height: 1;
+  display: grid;
+  place-items: center;
+  box-shadow: none;
+  gap: 0;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
 }
 
 .mini-btn:hover {
@@ -368,12 +429,12 @@ button:disabled {
 }
 
 .table-input:hover {
-  background: #f8fbff;
+  background: #f8fafc;
 }
 
 .table-input:focus {
   outline: none;
-  background: #eef5ff;
+  background: #f0fdf4;
   box-shadow: inset 0 0 0 2px var(--excel-focus);
 }
 

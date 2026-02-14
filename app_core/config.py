@@ -25,9 +25,12 @@ def load_default_message_template() -> str:
     """Read default message text from template file, with safe fallback."""
     try:
         if TEMPLATE_FILE_PATH.exists():
-            file_text = TEMPLATE_FILE_PATH.read_text(encoding="utf-8").strip()
-            if file_text:
-                return file_text
+            file_text = TEMPLATE_FILE_PATH.read_text(encoding="utf-8")
+            return file_text.replace("\r\n", "\n").replace("\r", "\n")
     except OSError:
         pass
     return DEFAULT_MESSAGE_TEXT
+
+
+def save_default_message_template(template_text: str) -> None:
+    TEMPLATE_FILE_PATH.write_text(template_text, encoding="utf-8")

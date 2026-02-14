@@ -10,13 +10,54 @@
   <div class="layout">
     <div class="sidebar-stack">
       <aside class="sidebar">
-        <h2>Uploaded Contacts Files</h2>
+        <h2 class="sidebar-title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M14 2v6h6"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          Uploaded Contacts Files
+        </h2>
         <p class="small">
           Open any file to view preview and edit details on a dedicated page.
         </p>
         <div class="upload-section">
           <button id="contacts-upload-btn" type="button" class="upload-btn">
-            Upload New Contacts File (Optional)
+            <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M12 16V4"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M8 8l4-4 4 4"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M4 20h16"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            Upload New Contacts File
           </button>
           <input
             type="file"
@@ -35,7 +76,25 @@
                 <div class="history-name">{{ file.display_name }}</div>
                 <div class="history-desc">{{ file.description or 'No description yet.' }}</div>
                 <div class="history-meta">{{ file.modified_at }} - {{ file.size_label }}</div>
-                <a class="history-open" href="/contacts/{{ file.name|urlencode }}">Open</a>
+                <a class="history-open" href="/contacts/{{ file.name|urlencode }}">
+                  <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path
+                      d="M5 12h14"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path
+                      d="M13 5l7 7-7 7"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  Open
+                </a>
               </li>
             {% endfor %}
           {% else %}
@@ -45,7 +104,18 @@
       </aside>
 
       <aside class="sidebar sidebar-phone">
-        <h2>Direct Number (Optional)</h2>
+        <h2 class="sidebar-title">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.08 4.18 2 2 0 0 1 4.06 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          Direct Number (Optional)
+        </h2>
         <p class="small">
           Use this only when sending to one person directly.
         </p>
@@ -64,10 +134,20 @@
 
     <main class="card">
       <header class="header">
-        <h1>WhatsApp Sender</h1>
-        <p class="hint">
-          Enter the phone once. You can type local digits or full country code, and it will be converted to WhatsApp format automatically.
-        </p>
+        <h1 class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg class="brand-icon" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </span>
+          WhatsApp Sender
+        </h1>
         <p class="small">
           Default country code for local numbers: +{{ default_country_code }}
         </p>
@@ -83,6 +163,7 @@
               <textarea
                 name="message"
                 id="message-input"
+                dir="auto"
                 placeholder="Write text message. If you choose media, this is used as caption."
               >{{- default_message_template -}}</textarea>
             </label>
@@ -92,12 +173,12 @@
             </p>
 
             <label>
-              Media (Optional)
+              Media
               <input type="file" name="media" accept="image/*,video/*,.pdf,.doc,.docx,.txt">
             </label>
 
             <label>
-              Select Existing Contacts File (Optional)
+              Select Existing Contacts File
               <select name="existing_contacts_file" id="existing-contacts-select">
                 <option value="">-- Select saved contacts file --</option>
                 {% for file in uploaded_excel_files %}
@@ -109,15 +190,55 @@
             </label>
 
             <p class="small">
-              If both are provided, uploaded file is used and also saved in history.
-            </p>
-            <p class="small">
               Contacts file (.xlsx or .csv) must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
             </p>
 
             <div class="form-actions">
-              <button id="send-button" type="submit">Send</button>
-              <button id="logout-button" type="button" class="secondary">Logout</button>
+              <button id="send-button" type="submit">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M22 2L11 13"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M22 2l-7 20-4-9-9-4 20-7z"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                Send
+              </button>
+              <button id="logout-button" type="button" class="secondary">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M16 17l5-5-5-5"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M21 12H9"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                Logout
+              </button>
             </div>
             <p class="small">
               Session stays active between sends for stability. Use Logout to end the WhatsApp session.
@@ -135,7 +256,25 @@
       <div id="qr-loader" class="loader"></div>
       <img id="qr-image" class="qr-image hidden" alt="WhatsApp QR code">
       <div class="modal-actions">
-        <button id="close-modal" type="button" class="secondary">Close</button>
+        <button id="close-modal" type="button" class="secondary">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M18 6L6 18"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M6 6l12 12"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          Close
+        </button>
       </div>
     </div>
   </div>

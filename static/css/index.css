@@ -1,20 +1,23 @@
 :root {
-  --bg-top: #edf4ff;
-  --bg-bottom: #eef8f1;
+  --bg-top: #eafff3;
+  --bg-bottom: #f3fbff;
   --panel: #ffffff;
-  --panel-soft: #f7fafc;
-  --text: #1b2533;
-  --muted: #5d6b7b;
-  --accent: #1d6fd8;
-  --accent-dark: #1556a6;
-  --line: #d9e1ea;
-  --line-strong: #c6d1de;
-  --error-bg: #fff1f1;
-  --error-border: #f2b8b5;
-  --error-text: #9b2c2c;
-  --ok-bg: #eefaf1;
-  --ok-border: #bfe4c8;
-  --ok-text: #216737;
+  --panel-soft: #f3f7f5;
+  --text: #0f172a;
+  --muted: #475569;
+  --accent: #22c55e;
+  --accent-dark: #16a34a;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --shadow-sm: 0 10px 24px rgba(2, 6, 23, 0.06);
+  --shadow-md: 0 18px 42px rgba(2, 6, 23, 0.08);
+  --focus-ring: 0 0 0 3px rgba(34, 197, 94, 0.25);
+  --error-bg: #fff1f2;
+  --error-border: #fecaca;
+  --error-text: #b91c1c;
+  --ok-bg: #ecfdf5;
+  --ok-border: #bbf7d0;
+  --ok-text: #166534;
 }
 
 * {
@@ -24,7 +27,8 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial,
+    "Noto Sans", "Liberation Sans", sans-serif;
   color: var(--text);
   background: linear-gradient(140deg, var(--bg-top), var(--bg-bottom));
   display: grid;
@@ -38,6 +42,13 @@ body {
   grid-template-columns: 320px minmax(0, 1fr);
   gap: 18px;
   align-items: start;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  display: inline-block;
 }
 
 .sidebar-stack {
@@ -61,8 +72,8 @@ body {
 .sidebar {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: 0 10px 24px rgba(18, 40, 72, 0.08);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
   padding: 16px;
   display: grid;
   gap: 10px;
@@ -70,10 +81,18 @@ body {
   overflow: auto;
 }
 
-.sidebar h2 {
+.sidebar-title {
   margin: 0;
-  font-size: 1.06rem;
-  color: #1b3250;
+  font-size: 1.02rem;
+  color: #0f2a2e;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  letter-spacing: 0.2px;
+}
+
+.sidebar-title .icon {
+  color: var(--accent-dark);
 }
 
 .upload-section {
@@ -86,12 +105,19 @@ body {
   padding: 9px 12px;
   font-size: 0.88rem;
   border: 1px solid var(--line-strong);
-  background: #f3f8ff;
-  color: #1a3c66;
+  border-style: dashed;
+  background: #ecfdf5;
+  color: #166534;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: none;
 }
 
 .upload-btn:hover {
-  background: #e9f2ff;
+  background: #dcfce7;
+  border-color: #86efac;
 }
 
 .hidden-file-input {
@@ -108,11 +134,19 @@ body {
 
 .history-item {
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px;
   background: #ffffff;
   display: grid;
   gap: 6px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.history-item:hover {
+  border-color: #a7f3d0;
+  box-shadow: 0 10px 22px rgba(2, 6, 23, 0.06);
 }
 
 .history-name {
@@ -123,7 +157,7 @@ body {
 }
 
 .history-desc {
-  color: #344a62;
+  color: var(--muted);
   font-size: 0.82rem;
   line-height: 1.35;
   white-space: pre-wrap;
@@ -138,7 +172,7 @@ body {
 
 .history-empty {
   border: 1px dashed var(--line-strong);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px;
   color: var(--muted);
   font-size: 0.9rem;
@@ -146,12 +180,14 @@ body {
 }
 
 .history-open {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   text-decoration: none;
   border: 1px solid var(--line-strong);
   color: var(--text);
   background: #ffffff;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 6px 10px;
   font-size: 0.8rem;
   font-weight: 700;
@@ -161,14 +197,20 @@ body {
 .history-open:hover {
   border-color: var(--accent);
   color: var(--accent-dark);
+  background: #f8fafc;
+}
+
+.history-open .icon {
+  width: 16px;
+  height: 16px;
 }
 
 .card {
   width: 100%;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: 0 12px 28px rgba(18, 40, 72, 0.08);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
   overflow: hidden;
 }
 
@@ -178,10 +220,30 @@ body {
   background: var(--panel-soft);
 }
 
-h1 {
+.brand {
   margin: 0 0 8px;
   font-size: 1.5rem;
-  color: #173b68;
+  color: #0b2a1c;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  letter-spacing: 0.2px;
+}
+
+.brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: rgba(34, 197, 94, 0.14);
+  display: grid;
+  place-items: center;
+  color: var(--accent-dark);
+}
+
+.brand-icon {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 
 .hint {
@@ -240,10 +302,12 @@ select {
   padding: 10px 12px;
   color: var(--text);
   background: #ffffff;
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 textarea {
-  min-height: 160px;
+  min-height: 240px;
   resize: vertical;
 }
 
@@ -256,36 +320,50 @@ textarea:focus,
 select:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(29, 111, 216, 0.18);
+  box-shadow: var(--focus-ring);
 }
 
 button {
   border: 1px solid transparent;
-  border-radius: 10px;
-  background: var(--accent);
+  border-radius: 12px;
+  background: var(--accent-dark);
   color: #ffffff;
   font-size: 0.97rem;
   font-weight: 800;
   padding: 11px 16px;
   cursor: pointer;
-  transition: background 0.2s ease;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 10px 22px rgba(22, 163, 74, 0.18);
 }
 
 button:hover {
-  background: var(--accent-dark);
+  background: #15803d;
 }
 
 button:disabled {
   cursor: not-allowed;
   opacity: 0.72;
+  box-shadow: none;
 }
 
 button.secondary {
-  background: #3a4f65;
+  background: #ffffff;
+  color: var(--text);
+  border-color: var(--line-strong);
+  box-shadow: none;
 }
 
 button.secondary:hover {
-  background: #2b3e51;
+  background: #f8fafc;
+  border-color: #94a3b8;
 }
 
 .form-actions {
@@ -342,9 +420,9 @@ button.secondary:hover {
 .modal-card {
   width: min(430px, 100%);
   background: #ffffff;
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1px solid var(--line);
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.24);
+  box-shadow: var(--shadow-md);
   padding: 18px;
   text-align: center;
   display: grid;
@@ -354,7 +432,7 @@ button.secondary:hover {
 .modal-card h2 {
   margin: 4px 0 0;
   font-size: 1.2rem;
-  color: #173b68;
+  color: #0b2a1c;
 }
 
 .modal-message {

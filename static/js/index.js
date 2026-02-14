@@ -18,7 +18,12 @@
   const existingContactsSelect = document.getElementById('existing-contacts-select');
   const messageInput = document.getElementById('message-input');
   const historyList = document.getElementById('history-list');
-  const defaultMessageTemplate = messageInput.value;
+  let defaultMessageTemplate = messageInput.value;
+  let lastSavedMessageTemplate = defaultMessageTemplate;
+  let templateSaveTimer = null;
+  let isSavingTemplate = false;
+  let pendingTemplateText = null;
+  let lastTemplateSaveErrorAt = 0;
   let isUploadingContacts = false;
   let isSending = false;
   let isLoggingOut = false;
@@ -95,6 +100,10 @@
       MEDIA_TOO_LARGE: 'The selected media is too large. Choose a smaller file.',
       MISSING_CONTENT: 'Write a message or choose a media file.',
       MISSING_TARGET: 'Enter a phone number, upload a contacts file, or select an existing contacts file.',
+      TEMPLATE_MISSING: 'Message template is missing.',
+      TEMPLATE_INVALID: 'Message template must be plain text.',
+      TEMPLATE_TOO_LARGE: 'Message template is too long.',
+      TEMPLATE_SAVE_FAILED: 'Could not save message template. Check disk permissions and try again.',
       VALIDATION_ERROR: fallbackMessage || 'Please check your input and try again.',
       INVALID_CONTACTS_FILE: 'Upload a valid contacts file (.xlsx or .csv).',
       CONTACTS_UPLOAD_MISSING: 'Choose a contacts file to upload.',
@@ -120,6 +129,72 @@
     };
 
     return map[code] || fallbackMessage || 'Something went wrong. Please try again.';
+  }
+
+  async function persistMessageTemplate(templateText) {
+    pendingTemplateText = templateText;
+    if (isSavingTemplate) {
+      return;
+    }
+
+    isSavingTemplate = true;
+    let inFlightText = null;
+
+    try {
+      while (pendingTemplateText !== null) {
+        inFlightText = pendingTemplateText;
+        pendingTemplateText = null;
+
+        if (inFlightText === lastSavedMessageTemplate) {
+          continue;
+        }
+
+        await fetchJson('/api/template', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ template: inFlightText }),
+        });
+        lastSavedMessageTemplate = inFlightText;
+      }
+    } catch (err) {
+      if (inFlightText !== null) {
+        pendingTemplateText = inFlightText;
+      }
+
+      const now = Date.now();
+      if (now - lastTemplateSaveErrorAt > 4000) {
+        lastTemplateSaveErrorAt = now;
+        const message =
+          err && err.message ? err.message : 'Could not save message template. Please try again.';
+        setBanner(false, message);
+      }
+
+      throw err;
+    } finally {
+      isSavingTemplate = false;
+    }
+  }
+
+  function scheduleTemplateSave() {
+    if (templateSaveTimer) {
+      clearTimeout(templateSaveTimer);
+    }
+
+    templateSaveTimer = setTimeout(() => {
+      templateSaveTimer = null;
+      persistMessageTemplate(defaultMessageTemplate).catch(() => {});
+    }, 700);
+  }
+
+  function flushTemplateSave() {
+    if (templateSaveTimer) {
+      clearTimeout(templateSaveTimer);
+      templateSaveTimer = null;
+    }
+
+    return persistMessageTemplate(defaultMessageTemplate);
   }
 
   async function fetchWithRetry(url, options = {}) {
@@ -176,6 +251,15 @@
 
     return data;
   }
+
+  messageInput.addEventListener('input', () => {
+    defaultMessageTemplate = messageInput.value;
+    scheduleTemplateSave();
+  });
+
+  messageInput.addEventListener('blur', () => {
+    flushTemplateSave().catch(() => {});
+  });
 
   function renderHistoryAndSelect(files) {
     const previousSelection = existingContactsSelect.value;
@@ -385,6 +469,7 @@
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     statusBox.classList.add('hidden');
+    flushTemplateSave().catch(() => {});
 
     if (isUploadingContacts) {
       const message = 'Contacts file is still uploading. Wait a moment, then press Send.';
