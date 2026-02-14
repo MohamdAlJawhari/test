@@ -96,7 +96,13 @@
               Contacts file (.xlsx or .csv) must include a column named <strong>NUMBERS</strong>. Other columns can be used as variables.
             </p>
 
-            <button id="send-button" type="submit">Send</button>
+            <div class="form-actions">
+              <button id="send-button" type="submit">Send</button>
+              <button id="logout-button" type="button" class="secondary">Logout</button>
+            </div>
+            <p class="small">
+              Session stays active between sends for stability. Use Logout to end the WhatsApp session.
+            </p>
           </div>
 
           <aside class="phone-panel">

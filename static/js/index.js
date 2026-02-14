@@ -5,6 +5,7 @@
   }
 
   const sendButton = document.getElementById('send-button');
+  const logoutButton = document.getElementById('logout-button');
   const statusBox = document.getElementById('status');
   const modal = document.getElementById('qr-modal');
   const qrMessage = document.getElementById('qr-message');
@@ -20,9 +21,14 @@
   const defaultMessageTemplate = messageInput.value;
   let isUploadingContacts = false;
   let isSending = false;
+  let isLoggingOut = false;
 
-  function updateSendButtonState() {
-    sendButton.disabled = isUploadingContacts || isSending;
+  function updateActionButtonsState() {
+    const disabled = isUploadingContacts || isSending || isLoggingOut;
+    sendButton.disabled = disabled;
+    if (logoutButton) {
+      logoutButton.disabled = disabled;
+    }
   }
 
   function setBanner(ok, message) {
@@ -79,6 +85,8 @@
       NODE_API_REQUEST_ERROR: 'Network issue while contacting WhatsApp service. Please check your connection.',
       NODE_API_BAD_RESPONSE: 'WhatsApp service returned an invalid response. Try restarting the app.',
       WHATSAPP_NOT_READY: 'WhatsApp is not ready. Keep the QR code open and scan it again.',
+      WHATSAPP_WPP_MISSING:
+        'WhatsApp Web is not fully ready ("WPP is not defined"). Wait 5–10 seconds and press Send again. If it repeats, click Logout or restart python main.py.',
       DELIVERY_TIMEOUT: 'Sending is slower than expected. The message may still arrive. Check WhatsApp and retry if needed.',
       DELIVERY_FAILED: 'Message delivery failed. Verify the phone number and try again.',
       WHATSAPP_API_ERROR: 'WhatsApp service returned an error. Please try again.',
@@ -238,8 +246,18 @@
 
   function updateModalFromStatus(data) {
     if (data.status === 'authenticated') {
-      setLoadingMessage('Login confirmed. Sending now...');
-      return true;
+      if (data.readyForSend) {
+        setLoadingMessage('WhatsApp is ready. Sending now...');
+        return true;
+      }
+
+      const iface = data.interfaceState || {};
+      const labelParts = [iface.mode, iface.displayInfo].filter(Boolean);
+      const label = labelParts.length ? ` (${labelParts.join(' / ')})` : '';
+      setLoadingMessage(
+        data.message || `Login confirmed. Waiting for WhatsApp Web to finish connecting${label}...`
+      );
+      return false;
     }
 
     if (data.status === 'qr') {
@@ -299,6 +317,31 @@
 
   closeModalButton.addEventListener('click', closeModal);
 
+  if (logoutButton) {
+    logoutButton.addEventListener('click', async () => {
+      if (isUploadingContacts || isSending || isLoggingOut) {
+        return;
+      }
+
+      isLoggingOut = true;
+      updateActionButtonsState();
+      setBanner(true, 'Logging out from WhatsApp session...');
+
+      try {
+        const result = await fetchJson('/api/session/logout', { method: 'POST' });
+        const message = (result && result.message) || 'Logged out.';
+        closeModal();
+        setBanner(true, message);
+      } catch (err) {
+        const message = err && err.message ? err.message : 'Could not log out.';
+        setBanner(false, message);
+      } finally {
+        isLoggingOut = false;
+        updateActionButtonsState();
+      }
+    });
+  }
+
   if (contactsUploadButton && contactsFileInput) {
     contactsUploadButton.addEventListener('click', () => {
       contactsFileInput.click();
@@ -312,7 +355,7 @@
     }
 
     isUploadingContacts = true;
-    updateSendButtonState();
+    updateActionButtonsState();
     setBanner(true, `Saving contacts file: ${file.name}...`);
 
     try {
@@ -335,7 +378,7 @@
     } finally {
       contactsFileInput.value = '';
       isUploadingContacts = false;
-      updateSendButtonState();
+      updateActionButtonsState();
     }
   });
 
@@ -361,7 +404,7 @@
     }
 
     isSending = true;
-    updateSendButtonState();
+    updateActionButtonsState();
     openModal();
     setLoadingMessage('Preparing login...');
 
@@ -382,7 +425,7 @@
       setBanner(false, message);
     } finally {
       isSending = false;
-      updateSendButtonState();
+      updateActionButtonsState();
     }
   });
 

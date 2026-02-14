@@ -15,9 +15,11 @@ const ACK_WAIT_TIMEOUT_MS = Number(process.env.ACK_WAIT_TIMEOUT_MS || 90000);
 const MIN_ACK_TO_LOGOUT = Number(process.env.MIN_ACK_TO_LOGOUT || 1);
 const STRICT_ACK = process.env.STRICT_ACK === '1';
 const LOGOUT_STEP_TIMEOUT_MS = Number(process.env.LOGOUT_STEP_TIMEOUT_MS || 8000);
+const AUTO_CLOSE_MS = Number(process.env.AUTO_CLOSE_MS || 0);
 
 let clientInstance = null;
 let initPromise = null;
+let recoveryPromise = null;
 
 const authState = {
   status: 'idle',
@@ -25,6 +27,41 @@ const authState = {
   qrCode: null,
   updatedAt: new Date().toISOString(),
 };
+
+const interfaceState = {
+  displayInfo: null,
+  mode: null,
+  updatedAt: null,
+};
+
+function setInterfaceState(displayInfo, mode) {
+  interfaceState.displayInfo = displayInfo || null;
+  interfaceState.mode = mode || null;
+  interfaceState.updatedAt = new Date().toISOString();
+}
+
+function clearInterfaceState() {
+  setInterfaceState(null, null);
+  interfaceState.updatedAt = null;
+}
+
+function isClientReadyForSend() {
+  return (
+    Boolean(clientInstance) &&
+    interfaceState.displayInfo === 'NORMAL' &&
+    interfaceState.mode === 'MAIN'
+  );
+}
+
+function formatInterfaceLabel() {
+  if (!interfaceState.displayInfo && !interfaceState.mode) {
+    return '';
+  }
+  if (interfaceState.mode && interfaceState.displayInfo) {
+    return `${interfaceState.mode} (${interfaceState.displayInfo})`;
+  }
+  return interfaceState.mode || interfaceState.displayInfo || '';
+}
 
 function setAuthState(status, message, qrCode = null) {
   authState.status = status;
@@ -39,6 +76,12 @@ function getAuthSnapshot() {
     message: authState.message,
     qrCode: authState.qrCode,
     updatedAt: authState.updatedAt,
+    readyForSend: isClientReadyForSend(),
+    interfaceState: {
+      displayInfo: interfaceState.displayInfo,
+      mode: interfaceState.mode,
+      updatedAt: interfaceState.updatedAt,
+    },
   };
 }
 
@@ -188,6 +231,9 @@ function buildAckTimeoutError(minAck, lastAck) {
 
 function statusCodeForSendError(err) {
   const text = String(err && err.message ? err.message : err || '').toLowerCase();
+  if (text.includes('wpp is not defined')) {
+    return 503;
+  }
   if (text.includes('timed out waiting for ack')) {
     return 504;
   }
@@ -198,6 +244,47 @@ function statusCodeForSendError(err) {
     return 503;
   }
   return 500;
+}
+
+function isWppMissingError(err) {
+  const text = String(err && err.message ? err.message : err || '').toLowerCase();
+  return text.includes('wpp is not defined');
+}
+
+async function recoverFromWppMissing() {
+  if (recoveryPromise) {
+    return recoveryPromise;
+  }
+
+  recoveryPromise = (async () => {
+    setAuthState(
+      'initializing',
+      'Recovering WhatsApp session after an internal WhatsApp Web error...'
+    );
+
+    if (clientInstance) {
+      try {
+        await withTimeout(clientInstance.close(), LOGOUT_STEP_TIMEOUT_MS, 'close');
+      } catch (err) {
+        console.warn('Close warning during recovery:', err.toString());
+      }
+    }
+
+    clientInstance = null;
+    clearInterfaceState();
+
+    try {
+      await recoverFromLockedBrowserProfile();
+    } catch (_err) {
+      // Best effort cleanup.
+    }
+
+    initClientIfNeeded();
+  })().finally(() => {
+    recoveryPromise = null;
+  });
+
+  return recoveryPromise;
 }
 
 function asBoolean(value) {
@@ -491,7 +578,14 @@ async function waitForMessageAck(
 
 function initClientIfNeeded() {
   if (clientInstance) {
-    setAuthState('authenticated', 'WhatsApp is ready.');
+    if (isClientReadyForSend()) {
+      setAuthState('authenticated', 'WhatsApp is ready.');
+    } else {
+      setAuthState(
+        'authenticated',
+        `WhatsApp is connecting${formatInterfaceLabel() ? ` (${formatInterfaceLabel()})` : ''}. Please wait...`
+      );
+    }
     return;
   }
 
@@ -500,12 +594,14 @@ function initClientIfNeeded() {
   }
 
   setAuthState('initializing', 'Starting WhatsApp client...');
+  clearInterfaceState();
 
   const createOptions = {
       session: SESSION_NAME,
       headless: true,
       logQR: false,
       folderNameToken: TOKEN_BASE_DIR,
+      autoClose: AUTO_CLOSE_MS,
       catchQR: (base64Qrimg, _asciiQR, attempts) => {
         setAuthState(
           'qr',
@@ -534,7 +630,10 @@ function initClientIfNeeded() {
             setAuthState('initializing', 'Waiting for QR scan...');
           }
         } else if (status.includes('logged') || status.includes('chat')) {
-          setAuthState('authenticated', 'WhatsApp login confirmed.');
+          setAuthState(
+            'authenticated',
+            'WhatsApp login confirmed. Waiting for WhatsApp Web to finish syncing...'
+          );
         }
       },
       puppeteerOptions: {
@@ -574,12 +673,29 @@ function initClientIfNeeded() {
   initPromise = createClientWithRecovery()
     .then((client) => {
       clientInstance = client;
-      setAuthState('authenticated', 'WhatsApp client is ready.');
-      console.log('WhatsApp client is ready');
+      setAuthState(
+        'authenticated',
+        'WhatsApp login confirmed. Waiting for WhatsApp Web to finish syncing...'
+      );
+      console.log('WhatsApp client created');
 
       client.onMessage((message) => {
         console.log('Incoming message from', message.from);
       });
+
+      if (typeof client.onInterfaceChange === 'function') {
+        client.onInterfaceChange((state) => {
+          setInterfaceState(state?.displayInfo, state?.mode);
+          if (isClientReadyForSend()) {
+            setAuthState('authenticated', 'WhatsApp is ready.');
+          } else {
+            setAuthState(
+              'authenticated',
+              `WhatsApp is connecting (${formatInterfaceLabel() || 'starting'}). Please wait...`
+            );
+          }
+        });
+      }
 
       if (typeof client.onStateChange === 'function') {
         client.onStateChange((state) => {
@@ -591,6 +707,7 @@ function initClientIfNeeded() {
             normalized.includes('DISCONNECTED')
           ) {
             clientInstance = null;
+            clearInterfaceState();
             setAuthState(
               'idle',
               'Session disconnected. Press Send to generate a new QR code.'
@@ -633,10 +750,18 @@ async function logoutAndReset() {
   }
 
   clientInstance = null;
+  clearInterfaceState();
+
+  try {
+    await killStaleSessionBrowsers();
+  } catch (_err) {
+    // Best effort.
+  }
+  cleanupSessionLockFiles();
   cleanupSessionTokens();
   setAuthState(
     'idle',
-    'Message sent and logged out. Next send will require a new QR code.',
+    'Logged out. Press Send to generate a new QR code.',
     null
   );
 }
@@ -649,6 +774,25 @@ function ensureClient(req, res, next) {
       error: 'WhatsApp client is not ready. Please scan the QR code first.',
     });
   }
+  next();
+}
+
+function ensureClientReady(req, res, next) {
+  if (!clientInstance) {
+    return res.status(503).json({
+      ok: false,
+      error: 'WhatsApp client is not ready. Please scan the QR code first.',
+    });
+  }
+
+  if (!isClientReadyForSend()) {
+    const label = formatInterfaceLabel();
+    return res.status(503).json({
+      ok: false,
+      error: `WhatsApp is still connecting (${label || 'starting'}). Please wait a few seconds and try again.`,
+    });
+  }
+
   next();
 }
 
@@ -680,7 +824,7 @@ app.get('/auth/status', (_req, res) => {
 // ============================
 // 1) Send TEXT endpoint
 // ============================
-app.post('/send-text', ensureClient, async (req, res) => {
+app.post('/send-text', ensureClientReady, async (req, res) => {
   const { to, message, keepSession } = req.body;
   const keepSessionEnabled = asBoolean(keepSession);
 
@@ -700,20 +844,19 @@ app.post('/send-text', ensureClient, async (req, res) => {
       if (ackResult.status !== 'ack') {
         throw buildAckTimeoutError(MIN_ACK_TO_LOGOUT, ackResult.lastAck);
       }
-
-      await logoutAndReset();
     }
     console.log(`Text sent to ${to}: ${message}`);
     res.json({ ok: true, ackStatus: ackResult.status });
   } catch (e) {
-    if (!keepSessionEnabled) {
-      try {
-        await logoutAndReset();
-      } catch (_err) {
-        // Best effort reset.
-      }
-    }
     console.error('Error sending text:', e);
+    if (isWppMissingError(e)) {
+      await recoverFromWppMissing();
+      return res.status(503).json({
+        ok: false,
+        error:
+          'WhatsApp Web failed to initialize ("WPP is not defined"). The session is recovering; please wait 5-10 seconds and retry.',
+      });
+    }
     res.status(statusCodeForSendError(e)).json({ ok: false, error: e.toString() });
   }
 });
@@ -723,7 +866,7 @@ app.post('/send-text', ensureClient, async (req, res) => {
 // ============================
 // Expect: { to, filename, caption, base64 }
 // base64 MUST look like: "data:video/mp4;base64,AAAA..."
-app.post('/send-media', ensureClient, async (req, res) => {
+app.post('/send-media', ensureClientReady, async (req, res) => {
   const { to, filename, caption, base64, keepSession } = req.body;
   const keepSessionEnabled = asBoolean(keepSession);
 
@@ -752,20 +895,19 @@ app.post('/send-media', ensureClient, async (req, res) => {
       if (ackResult.status !== 'ack') {
         throw buildAckTimeoutError(MIN_ACK_TO_LOGOUT, ackResult.lastAck);
       }
-
-      await logoutAndReset();
     }
     console.log(`Media sent to ${to}: ${filename || 'file'}`);
     res.json({ ok: true, ackStatus: ackResult.status });
   } catch (e) {
-    if (!keepSessionEnabled) {
-      try {
-        await logoutAndReset();
-      } catch (_err) {
-        // Best effort reset.
-      }
-    }
     console.error('Error sending media:', e);
+    if (isWppMissingError(e)) {
+      await recoverFromWppMissing();
+      return res.status(503).json({
+        ok: false,
+        error:
+          'WhatsApp Web failed to initialize ("WPP is not defined"). The session is recovering; please wait 5-10 seconds and retry.',
+      });
+    }
     res.status(statusCodeForSendError(e)).json({ ok: false, error: e.toString() });
   }
 });

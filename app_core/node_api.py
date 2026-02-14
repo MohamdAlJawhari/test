@@ -15,6 +15,17 @@ def map_node_error(status_code: int, raw_error: str | None = None) -> AppError:
     lowered = details.lower()
     safe_status = _safe_http_status(status_code)
 
+    if "wpp is not defined" in lowered:
+        return AppError(
+            code="WHATSAPP_WPP_MISSING",
+            message=(
+                "WhatsApp Web did not finish initializing (\"WPP is not defined\"). "
+                "Wait 5-10 seconds and retry. If it repeats, click Logout or restart python main.py."
+            ),
+            status=503,
+            details=details,
+        )
+
     if (
         "browser is already running" in lowered
         or "userdatadir" in lowered

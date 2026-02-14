@@ -90,6 +90,19 @@ def register_routes(app, node_api: NodeApiClient) -> None:
         except Exception as exc:
             return handle_api_exception(exc)
 
+    @app.post("/api/session/logout")
+    def api_session_logout():
+        try:
+            node_api.logout_session()
+            return jsonify(
+                {
+                    "ok": True,
+                    "message": "Logged out. Press Send to generate a new QR code.",
+                }
+            )
+        except Exception as exc:
+            return handle_api_exception(exc)
+
     @app.get("/api/contacts/history")
     def api_contacts_history():
         try:
@@ -398,16 +411,8 @@ def register_routes(app, node_api: NodeApiClient) -> None:
                         if index < len(rows) - 1 and BATCH_SEND_DELAY_SECONDS > 0:
                             time.sleep(BATCH_SEND_DELAY_SECONDS)
                 except AppError:
-                    try:
-                        node_api.logout_session()
-                    except Exception:
-                        pass
                     raise
                 except Exception as exc:
-                    try:
-                        node_api.logout_session()
-                    except Exception:
-                        pass
                     raise AppError(
                         code="BATCH_ROW_FAILED",
                         message="Failed while sending one of the contacts rows.",
@@ -415,20 +420,9 @@ def register_routes(app, node_api: NodeApiClient) -> None:
                         details=str(exc),
                     ) from exc
 
-                logout_warning = None
-                try:
-                    node_api.logout_session()
-                except Exception as exc:
-                    logout_warning = str(exc)
-
                 result_message = (
                     f"Batch sent successfully to {len(rows)} row(s). "
-                    "You are logged out; a new QR code will be required next send."
-                )
-                if logout_warning:
-                    result_message = (
-                        f"Batch sent successfully to {len(rows)} row(s), but automatic logout failed. "
-                        "Restart the app before the next batch."
+                    "Session is kept active. Use Logout to end the WhatsApp session."
                     )
 
                 return jsonify(
@@ -447,20 +441,20 @@ def register_routes(app, node_api: NodeApiClient) -> None:
                     filename=uploaded_file.filename,
                     caption=message,
                     data_url=data_url,
-                    keep_session=False,
+                    keep_session=True,
                 )
                 return jsonify(
                     {
                         "ok": True,
-                        "message": f"Media sent to {to}. You are logged out; a new QR code will be required next send.",
+                        "message": f"Media sent to {to}. Session is kept active.",
                     }
                 )
 
-            node_api.send_text(to=to, message=message, keep_session=False)
+            node_api.send_text(to=to, message=message, keep_session=True)
             return jsonify(
                 {
                     "ok": True,
-                    "message": f"Text sent to {to}. You are logged out; a new QR code will be required next send.",
+                    "message": f"Text sent to {to}. Session is kept active.",
                 }
             )
         except ValueError as exc:
