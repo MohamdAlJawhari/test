@@ -15,7 +15,11 @@ from app_core.runtime import (
 )
 
 # Entry point module: wires Flask app + route registration + Node process lifecycle.
-app = Flask(__name__)
+app = Flask(
+    __name__,
+    static_folder=str(PROJECT_ROOT / "static"),
+    template_folder=str(PROJECT_ROOT / "templates"),
+)
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
 node_api = NodeApiClient(base_url="http://localhost:3000")
@@ -44,7 +48,7 @@ if __name__ == "__main__":
     # Start Flask UI on an available port and open browser.
     preferred_ui_port = int(os.getenv("FLASK_PORT", "5000"))
     ui_port = find_available_port(preferred_ui_port)
-    debug_mode = os.getenv("FLASK_DEBUG", "1") == "1"
+    debug_mode = os.getenv("FLASK_DEBUG", "0") == "1"
     ui_url = f"http://127.0.0.1:{ui_port}"
 
     print(f"Node API running on: {node_api.base_url}")
@@ -52,11 +56,16 @@ if __name__ == "__main__":
     open_browser_soon(ui_url)
 
     try:
-        app.run(
-            host="127.0.0.1",
-            port=ui_port,
-            debug=debug_mode,
-            use_reloader=False,
-        )
+        if debug_mode:
+            app.run(
+                host="127.0.0.1",
+                port=ui_port,
+                debug=True,
+                use_reloader=False,
+            )
+        else:
+            from waitress import serve
+
+            serve(app, host="127.0.0.1", port=ui_port)
     finally:
         _stop_node_process()

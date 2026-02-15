@@ -8,6 +8,36 @@ from pathlib import Path
 
 import requests
 
+# find_node_executable resolves a Node.js executable path. This enables shipping a portable `node.exe` alongside the app.
+def find_node_executable(project_root: Path) -> str:
+    env_node = os.getenv("NODE_EXE")
+    if env_node:
+        return env_node
+
+    candidates: list[Path] = []
+    if os.name == "nt":
+        candidates.extend(
+            [
+                project_root / "node.exe",
+                project_root / "node" / "node.exe",
+                project_root / "runtime" / "node.exe",
+            ]
+        )
+    else:
+        candidates.extend(
+            [
+                project_root / "node",
+                project_root / "node" / "bin" / "node",
+                project_root / "runtime" / "node",
+            ]
+        )
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    return "node"
+
 # Core runtime utilities for managing the Node.js API process, checking port availability, and opening the browser.
 def is_port_available(port: int, host: str = "127.0.0.1") -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -32,14 +62,15 @@ def start_node_server(api_port: int, project_root: Path) -> subprocess.Popen:
     env["API_PORT"] = str(api_port)
 
     try:
+        node_exe = find_node_executable(project_root)
         process = subprocess.Popen(
-            ["node", "index.js"],
+            [node_exe, "index.js"],
             cwd=project_root,
             env=env,
         )
     except FileNotFoundError as exc:
         raise RuntimeError(
-            'Node.js is not available in PATH. Install Node.js or run "node index.js" manually.'
+            'Node.js is not available. Install Node.js, add it to PATH, or set NODE_EXE to a Node executable path.'
         ) from exc
 
     return process
@@ -90,4 +121,3 @@ def open_browser_soon(url: str, delay_seconds: float = 0.8) -> None:
     timer = threading.Timer(delay_seconds, lambda: webbrowser.open(url))
     timer.daemon = True
     timer.start()
-
