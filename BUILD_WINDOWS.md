@@ -7,7 +7,7 @@ This project is a local web app:
 ## 1) Requirements (build machine)
 
 - Python installed and available as `python`
-- Node.js + npm (only needed to install Node dependencies / create `node_modules`)
+- Node.js + npm (needed to install Node dependencies / create `node_modules`)
 
 ## 2) Prepare Node dependencies
 
@@ -37,7 +37,8 @@ Zip and send the whole folder: `dist\WhatsAppSender\`
 On the target PC, run: `WhatsAppSender.exe`
 
 If the target PC does **not** have Node installed:
-- copy a `node.exe` next to the `.exe`, or into `dist\WhatsAppSender\node\node.exe`
+- the build script tries to bundle `node.exe` automatically into `dist\WhatsAppSender\node.exe`
+- if it is missing, install Node.js on the target PC or copy a `node.exe` next to `WhatsAppSender.exe`
 
 ## Notes
 

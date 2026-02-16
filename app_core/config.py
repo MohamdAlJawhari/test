@@ -14,7 +14,11 @@ elif getattr(sys, "frozen", False):
     PROJECT_ROOT = Path(sys.executable).resolve().parent
 else:
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+_frozen_resource_root = getattr(sys, "_MEIPASS", None) if getattr(sys, "frozen", False) else None
+RESOURCE_ROOT = Path(_frozen_resource_root).resolve() if _frozen_resource_root else PROJECT_ROOT
 TEMPLATE_FILE_PATH = PROJECT_ROOT / "template.txt"
+DEFAULT_TEMPLATE_FILE_PATH = RESOURCE_ROOT / "template.txt"
 
 CONTACTS_UPLOAD_DIR = PROJECT_ROOT / "data" / "contacts_uploads"
 CONTACTS_METADATA_FILE = CONTACTS_UPLOAD_DIR / "metadata.json"
@@ -33,6 +37,9 @@ def load_default_message_template() -> str:
     try:
         if TEMPLATE_FILE_PATH.exists():
             file_text = TEMPLATE_FILE_PATH.read_text(encoding="utf-8")
+            return file_text.replace("\r\n", "\n").replace("\r", "\n")
+        if DEFAULT_TEMPLATE_FILE_PATH.exists():
+            file_text = DEFAULT_TEMPLATE_FILE_PATH.read_text(encoding="utf-8")
             return file_text.replace("\r\n", "\n").replace("\r", "\n")
     except OSError:
         pass

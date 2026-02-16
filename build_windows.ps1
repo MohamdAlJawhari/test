@@ -53,6 +53,17 @@ if (Test-Path "node_modules") {
   Write-Host "WARNING: node_modules not found. Run npm install before building, or copy node_modules to $distDir on the target PC."
 }
 
+$distNodeExe = Join-Path $distDir "node.exe"
+if (-not (Test-Path $distNodeExe)) {
+  $nodeCmd = Get-Command node -ErrorAction SilentlyContinue
+  if ($nodeCmd -and $nodeCmd.Source -and (Test-Path $nodeCmd.Source)) {
+    Copy-Item -Force $nodeCmd.Source $distNodeExe
+    Write-Host ("Bundled node.exe from: {0}" -f $nodeCmd.Source)
+  } else {
+    Write-Host "WARNING: Node.js executable not found on this machine. The target PC must have Node installed, or you must copy node.exe next to WhatsAppSender.exe."
+  }
+}
+
 Write-Host ""
 Write-Host "Done."
 Write-Host ("Output folder: {0}" -f (Resolve-Path $distDir))
