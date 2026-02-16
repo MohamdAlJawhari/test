@@ -76,18 +76,44 @@ def start_node_server(api_port: int, project_root: Path) -> subprocess.Popen:
     return process
 
 # stop_node_server safely terminates the Node.js API subprocess, first trying a graceful shutdown and then force-killing if it does not exit within a timeout.
-def stop_node_server(process: subprocess.Popen | None) -> None:
+def stop_node_server(process: subprocess.Popen | None, base_url: str | None = None) -> None:
     if not process:
         return
 
     if process.poll() is not None:
         return
 
+    if base_url:
+        try:
+            requests.post(f"{base_url}/system/shutdown", json={}, timeout=4)
+            process.wait(timeout=8)
+            return
+        except (requests.RequestException, subprocess.TimeoutExpired):
+            pass
+
     process.terminate()
     try:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            # Kill the full process tree to avoid orphaned Chrome/Node child processes.
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            try:
+                process.wait(timeout=3)
+                return
+            except subprocess.TimeoutExpired:
+                pass
+
         process.kill()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 def wait_for_node_ready(

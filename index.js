@@ -16,10 +16,26 @@ const MIN_ACK_TO_LOGOUT = Number(process.env.MIN_ACK_TO_LOGOUT || 1);
 const STRICT_ACK = process.env.STRICT_ACK === '1';
 const LOGOUT_STEP_TIMEOUT_MS = Number(process.env.LOGOUT_STEP_TIMEOUT_MS || 8000);
 const AUTO_CLOSE_MS = Number(process.env.AUTO_CLOSE_MS || 0);
+const SHUTDOWN_WAIT_TIMEOUT_MS = Number(
+  process.env.SHUTDOWN_WAIT_TIMEOUT_MS || 12000
+);
 
 let clientInstance = null;
 let initPromise = null;
 let recoveryPromise = null;
+let httpServer = null;
+let shutdownPromise = null;
+let shutdownRequested = false;
+
+app.use((req, res, next) => {
+  if (shutdownRequested && req.path !== '/system/shutdown') {
+    return res.status(503).json({
+      ok: false,
+      error: 'Node API is shutting down.',
+    });
+  }
+  next();
+});
 
 const authState = {
   status: 'idle',
@@ -766,6 +782,92 @@ async function logoutAndReset() {
   );
 }
 
+async function closeClientForShutdown() {
+  if (initPromise) {
+    try {
+      await withTimeout(
+        initPromise.catch(() => null),
+        SHUTDOWN_WAIT_TIMEOUT_MS,
+        'initPromise'
+      );
+    } catch (err) {
+      console.warn(
+        'Init wait warning during shutdown:',
+        err && err.toString ? err.toString() : String(err)
+      );
+    }
+  }
+
+  if (clientInstance) {
+    try {
+      await withTimeout(
+        clientInstance.close(),
+        LOGOUT_STEP_TIMEOUT_MS,
+        'close'
+      );
+    } catch (err) {
+      console.warn(
+        'Close warning during shutdown:',
+        err && err.toString ? err.toString() : String(err)
+      );
+    }
+  }
+
+  clientInstance = null;
+  clearInterfaceState();
+}
+
+async function closeHttpServer() {
+  if (!httpServer) {
+    return;
+  }
+
+  await withTimeout(
+    new Promise((resolve) => {
+      httpServer.close(() => resolve());
+    }),
+    SHUTDOWN_WAIT_TIMEOUT_MS,
+    'httpServer.close'
+  ).catch((err) => {
+    console.warn(
+      'HTTP close warning during shutdown:',
+      err && err.toString ? err.toString() : String(err)
+    );
+  });
+}
+
+async function shutdownGracefully(reason = 'unknown') {
+  if (shutdownPromise) {
+    return shutdownPromise;
+  }
+
+  shutdownRequested = true;
+  shutdownPromise = (async () => {
+    console.log(`Shutting down Node API (${reason})...`);
+    setAuthState('idle', 'Node API is shutting down.');
+
+    await closeClientForShutdown();
+    cleanupSessionLockFiles();
+    await closeHttpServer();
+  })().catch((err) => {
+    console.error('Shutdown error:', err);
+  });
+
+  return shutdownPromise;
+}
+
+function triggerProcessExit(reason, exitCode = 0) {
+  shutdownGracefully(reason).finally(() => {
+    process.exit(exitCode);
+  });
+}
+
+function registerSignalHandler(signalName) {
+  process.on(signalName, () => {
+    triggerProcessExit(`signal:${signalName}`);
+  });
+}
+
 // Small middleware to be sure client is ready
 function ensureClient(req, res, next) {
   if (!clientInstance) {
@@ -922,8 +1024,21 @@ app.post('/session/logout', async (_req, res) => {
   }
 });
 
+app.post('/system/shutdown', (_req, res) => {
+  res.json({ ok: true, message: 'Shutdown requested.' });
+  setImmediate(() => {
+    triggerProcessExit('api:/system/shutdown');
+  });
+});
+
 const HOST = process.env.API_HOST || '127.0.0.1';
 const PORT = Number(process.env.API_PORT || 3000);
-app.listen(PORT, HOST, () => {
+httpServer = app.listen(PORT, HOST, () => {
   console.log(`HTTP API listening on http://${HOST}:${PORT}`);
 });
+
+registerSignalHandler('SIGINT');
+registerSignalHandler('SIGTERM');
+if (process.platform === 'win32') {
+  registerSignalHandler('SIGBREAK');
+}
