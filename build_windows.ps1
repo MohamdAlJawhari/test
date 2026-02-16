@@ -29,6 +29,7 @@ if (Test-Path "static\\broadcast.ico") {
   --clean `
   --name "WhatsAppSender" `
   --onedir `
+  --noupx `
   @iconArgs `
   --add-data "templates;templates" `
   --add-data "static;static" `
@@ -62,6 +63,35 @@ if (-not (Test-Path $distNodeExe)) {
   } else {
     Write-Host "WARNING: Node.js executable not found on this machine. The target PC must have Node installed, or you must copy node.exe next to WhatsAppSender.exe."
   }
+}
+
+$nodeRuntime = if (Test-Path $distNodeExe) { $distNodeExe } else { "node" }
+$puppeteerCli = Join-Path $distDir "node_modules\\puppeteer\\lib\\cjs\\puppeteer\\node\\cli.js"
+$puppeteerCacheDir = Join-Path $distDir "puppeteer-cache"
+New-Item -ItemType Directory -Path $puppeteerCacheDir -Force | Out-Null
+
+if (Test-Path $puppeteerCli) {
+  Write-Host ("Installing Puppeteer Chrome runtime into: {0}" -f $puppeteerCacheDir)
+
+  $previousCache = [Environment]::GetEnvironmentVariable("PUPPETEER_CACHE_DIR", "Process")
+  [Environment]::SetEnvironmentVariable("PUPPETEER_CACHE_DIR", $puppeteerCacheDir, "Process")
+
+  try {
+    & $nodeRuntime $puppeteerCli browsers install chrome
+  } catch {
+    throw (
+      "Failed to install Puppeteer Chrome runtime. " +
+      "Check internet access on the build machine, then run build again. " +
+      "Original error: $($_.Exception.Message)"
+    )
+  } finally {
+    [Environment]::SetEnvironmentVariable("PUPPETEER_CACHE_DIR", $previousCache, "Process")
+  }
+} else {
+  Write-Host (
+    "WARNING: Puppeteer CLI not found at {0}. " +
+    "The app may fail on target PCs with 'Could not find Chrome'." -f $puppeteerCli
+  )
 }
 
 Write-Host ""

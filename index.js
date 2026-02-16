@@ -1,6 +1,19 @@
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
+
+const LOCAL_PUPPETEER_CACHE_DIR = path.join(__dirname, 'puppeteer-cache');
+if (!process.env.PUPPETEER_CACHE_DIR) {
+  process.env.PUPPETEER_CACHE_DIR = LOCAL_PUPPETEER_CACHE_DIR;
+}
+try {
+  if (!fs.existsSync(process.env.PUPPETEER_CACHE_DIR)) {
+    fs.mkdirSync(process.env.PUPPETEER_CACHE_DIR, { recursive: true });
+  }
+} catch (err) {
+  console.warn('Could not create Puppeteer cache directory:', err.toString());
+}
+
 const wppconnect = require('@wppconnect-team/wppconnect');
 const express = require('express');
 

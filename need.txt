@@ -8,3 +8,11 @@ python main.py
 
 build (Windows .exe):
 .\build_windows.ps1
+
+If Microsoft Defender Antivirus found threats:
+1) Open Windows Security → Virus & threat protection → Protection history.
+2) Find the WhatsAppSender.exe detection.
+3) Choose Actions → Restore (if quarantined), then Allow on device.
+4) Add a folder exclusion (Admin PowerShell), for example:
+        Add-MpPreference -ExclusionPath "C:\Apps\WhatsAppSender"
+5) Re-copy/re-extract the app folder and run again.
